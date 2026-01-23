@@ -1,0 +1,9 @@
+# VSCode
+.vscode
+
+# Github
+.github
+
+# Others
+node_modules
+.env
