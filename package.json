@@ -27,6 +27,7 @@
     "jsonwebtoken": "^9.0.2",
     "mariadb": "^3.4.5",
     "multer": "^2.0.2",
+    "mysql2": "^3.16.2",
     "nodemon": "^3.1.11",
     "sequelize": "^6.37.7",
     "umzug": "^3.8.2",
