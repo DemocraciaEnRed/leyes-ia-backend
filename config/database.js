@@ -1,7 +1,7 @@
 export default {
   development: {
-    dialect: 'mariadb',
-    database: process.env.DATABASE_NAME || 'movilizatorio',
+    dialect: 'mysql',
+    database: process.env.DATABASE_NAME || 'leyes',
     username: process.env.DATABASE_USERNAME || 'root',
     password: process.env.DATABASE_PASSWORD || 'root',
     host: process.env.DATABASE_HOST || 'localhost',
@@ -9,8 +9,8 @@ export default {
     logging: console.log,
   },
   production: {
-    dialect: 'mariadb',
-    database: process.env.DATABASE_NAME || 'movilizatorio',
+    dialect: 'mysql',
+    database: process.env.DATABASE_NAME || 'leyes',
     username: process.env.DATABASE_USERNAME || 'root',
     password: process.env.DATABASE_PASSWORD || 'root',
     host: process.env.DATABASE_HOST || 'localhost',
