@@ -1,0 +1,116 @@
+{% macro sentence(text) %}
+<p>{{ text }}</p>
+{% endmacro %}
+
+{% macro button(link, label) %}
+<table role="presentation" border="0" cellpadding="0" cellspacing="0" class="btn btn-primary">
+  <tbody>
+    <tr>
+      <td align="left">
+        <table role="presentation" border="0" cellpadding="0" cellspacing="0">
+          <tbody>
+            <tr>
+              <td> <a href="{{ link }}" target="_blank">{{ label }}</a> </td>
+            </tr>
+          </tbody>
+        </table>
+      </td>
+    </tr>
+  </tbody>
+</table>
+{% endmacro %}
+
+{% macro commentBox(user, userCountryEmoji, comment, commentDate) %}
+<table role="presentation" border="0" cellpadding="0" cellspacing="0" class="commentBox">
+  <tbody>
+    <tr>
+      <td align="left">
+        <table role="presentation" border="0" cellpadding="0" cellspacing="0">
+          <tbody>
+            <tr>
+              <td> 
+                <p>{{ userCountryEmoji }} <b>{{ user }}</b><br><span class="commentBox-date">Comentario hecho el {{ commentDate }} (GMT -03)</span></p>
+              </td>
+            </tr>
+            <tr>
+              <td> <p class="commentBox-text">{{ comment }}</p> </td>
+            </tr>
+          </tbody>
+        </table>
+      </td>
+    </tr>
+  </tbody>
+</table>
+{% endmacro %}
+
+{% macro commentAndReplyBox(user, userCountryEmoji, comment, commentDate, userReply, userCountryReply, reply, replyDate) %}
+<table role="presentation" border="0" cellpadding="0" cellspacing="0" class="commentBox">
+  <tbody>
+    <tr>
+      <td align="left">
+        <table role="presentation" border="0" cellpadding="0" cellspacing="0">
+          <tbody>
+            <tr>
+              <td> 
+                <p>{{ userCountryEmoji }} <b>{{ user }}</b><br><span class="commentBox-date">Comentario hecho el {{ commentDate }} (GMT -03)</span></p>
+              </td>
+            </tr>
+            <tr>
+              <td> <p class="commentBox-text">{{ comment }}</p> </td>
+            </tr>
+            <tr class="commentBox-reply-td">
+              <td> 
+                <p>{{ userCountryReply }} <b>{{ userReply }}</b><br><span class="commentBox-date">Respuesta hecha el {{ replyDate }} (GMT -03)</span></p>
+              </td>
+            </tr>
+            <tr class="commentBox-reply-td">
+              <td>
+                <p class="commentBox-text">{{ reply }}</p>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </td>
+    </tr>
+  </tbody>
+</table>
+{% endmacro %}
+
+{% macro authorNotesBox(user, userCountryEmoji, authorsNote, version, createdAt) %}
+<table role="presentation" border="0" cellpadding="0" cellspacing="0" class="commentBox">
+  <tbody>
+    <tr>
+      <td align="left">
+        <table role="presentation" border="0" cellpadding="0" cellspacing="0">
+          <tbody>
+            <tr>
+              <td> 
+                <p>{{ userCountryEmoji }} <b>{{ user }}</b><br><span class="commentBox-date">Versión {{ version }} públicada el {{ createdAt }} (GMT -03)</span></p>
+              </td>
+            </tr>
+            <tr>
+              <td> <p class="commentBox-text">{{ authorsNote }}</p> </td>
+            </tr>
+          </tbody>
+        </table>
+      </td>
+    </tr>
+  </tbody>
+</table>
+{% endmacro %}
+
+{% macro preheader(text) %}
+<span class="preheader">{{ text }}</span>
+{% endmacro %}
+
+{% macro title(text) %}
+<title>{{ text }}</title>
+{% endmacro %}
+
+{% macro sentence_italic(text) %}
+<p><i>{{ text }}</i></p>
+{% endmacro %}
+
+{% macro sentence_black(text) %}
+<p><b>{{ text }}</b></p>
+{% endmacro %}

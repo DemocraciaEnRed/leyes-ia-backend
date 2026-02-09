@@ -1,0 +1,14 @@
+{% extends "auth/base.njk" %}
+
+{% block main %}
+  <h1 class="title is-3 has-text-danger">
+    <i class="fas fa-check-circle"></i>&nbsp;Error
+  </h1>
+  <p class="subtitle is-5">Ocurrió un error al procesar su solicitud</p>
+  <p>Intente nuevamente. Si el error persiste, por favor contacte con Resurgentes</p>
+  <br>
+  <a href="{{ appUrl }}" class="button is-link">
+    <i class="fas fa-home"></i>&nbsp;Ir a la página de inicio
+  </a>
+
+{% endblock %}

@@ -1,0 +1,17 @@
+{% extends "base.njk" %}
+
+{% import "macros.njk" as macros %}
+
+{% block preheader %}
+	{{ macros.preheader('Confirmá tu correo electronico') }}
+{% endblock %}
+
+{% block main %}
+	{{ macros.sentence('¡Hola! 👋') }}
+	{{ macros.sentence('Si recibiste este mensaje es porque se ha modificado el correo electrónico de tu cuenta.') }}
+	{{ macros.sentence('Para acceder nuevamente es necesario que confirmes tu dirección de email.') }}
+	{{ macros.sentence_black('Haz click aquí para confirmar tu cuenta.') }}
+	{{ macros.button(url, 'Confirmar cuenta') }}
+	{{ macros.sentence_italic('Si crees que recibiste este email por error, por favor ignora este mensaje.') }}
+{% endblock %}
+

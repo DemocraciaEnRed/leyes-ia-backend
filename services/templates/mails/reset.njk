@@ -1,0 +1,15 @@
+{% extends "base.njk" %}
+
+{% import "macros.njk" as macros %}
+
+{% block preheader %}
+  {{ macros.preheader('Restablecer tu contraseña') }}
+{% endblock %}
+
+{% block main %}
+  {{ macros.sentence('¡Hola! 👋') }}
+  {{ macros.sentence('Hemos recibido una solicitud para restablecer la contraseña de tu cuenta.') }}
+  {{ macros.sentence('Haz click aquí para generar una nueva:') }}
+  {{ macros.button(url, 'Restablecer Contraseña') }}
+  {{ macros.sentence('Si no solicitaste esta recuperación, puedes ignorar este correo electrónico.') }}
+{% endblock %}

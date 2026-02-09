@@ -1,0 +1,91 @@
+{% extends "auth/base.njk" %}
+
+{% block main %}
+<div class="columns is-centered">
+  <div class="column is-10 is-6-tablet is-5-desktop is-4-widescreen has-text-left">
+    
+  <h1 class="title is-3">
+    Inicializar App
+  </h1>
+  <h1 class="subtitle is-4">
+    Crear administrador
+  </h1>
+  <p>Para poder inicializar la app, por favor complete el formulario</p>
+  <br>
+  <form id="form" action="/users/setup" method="post">
+    {# Nombre #}
+    <div class="field">
+      <label class="label">Nombre</label>
+      <div class="control">
+        <input class="input" type="text" name="firstName" required>
+      </div>
+    </div>
+    {# Apellido #}
+    <div class="field">
+      <label class="label">Apellido</label>
+      <div class="control">
+        <input class="input" type="text" name="lastName" required>
+      </div>
+    </div>
+    <div class="field">
+      <label class="label">Email</label>
+      <div class="control">
+        <input class="input" type="email" name="email" required>
+      </div>
+    </div>
+    <div class="field">
+      <label class="label">Contraseña</label>
+      <div class="control">
+        <input class="input" type="password" name="password" required>
+      </div>
+    </div>
+    <div class="field">
+      <label class="label">Confirmar contraseña</label>
+      <div class="control">
+        <input class="input" type="password" name="confirmPassword" required>
+      </div>
+    </div>
+    <div class="field">
+      <div class="control">
+        <button id="button" class="button is-link" type="submit">Iniciar</button>
+      </div>
+    </div>
+    <input type="hidden" name="magic" value="{{ magic }}">
+  </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // use jquery, its already in <head>
+
+  // function to check if password and confirm password are the same
+  function checkPassword() {
+    const password = $('input[name="password"]').val();
+    const confirmPassword = $('input[name="confirmPassword"]').val();
+    if (password !== confirmPassword) {
+      alert('Las contraseñas no coinciden');
+      return false;
+    }
+    return true;
+  }
+
+  // on form submit, check password
+  $('#form').submit(function(e) {
+    if (!checkPassword()) {
+      e.preventDefault();
+      return false;
+    }
+    // add is-loading class to button
+    $('#button').addClass('is-loading');
+    // disable button
+    $('#button').prop('disabled', true);
+    
+    setTimeout (() => {
+      // submit form
+      return true
+    }, 1000);
+  });  
+</script>
+{% endblock %}

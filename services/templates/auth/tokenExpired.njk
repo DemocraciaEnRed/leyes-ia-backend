@@ -1,0 +1,14 @@
+{% extends "auth/base.njk" %}
+
+{% block main %}
+  <h1 class="title is-3 has-text-danger">
+    <i class="fas fa-times-circle"></i>&nbsp;Error
+  </h1>
+  <p class="subtitle is-5">Token expirado</p>
+  <p>El token ha expirado y no podemos procesar su solicitud.</p>
+  <p>Por favor, solicite un nuevo token e intente nuevamente.</p>
+  <br>
+  <a href="{{ appUrl }}" class="button is-link">
+    <i class="fas fa-home"></i>&nbsp;Ir a la página de inicio
+  </a>
+{% endblock %}
