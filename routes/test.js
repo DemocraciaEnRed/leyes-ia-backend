@@ -2,6 +2,7 @@ import express from 'express';
 import model from '../models/index.js';
 import geminiService from '../services/gemini.js'; 
 import upload from '../services/multer.js';
+import authenticate from '../middlewares/authenticate.js';
 
 // initialize router
 const router = express.Router();
@@ -9,6 +10,17 @@ const router = express.Router();
 // -----------------------------------------------
 // BASE   /test
 // -----------------------------------------------
+
+router.get('/whoami', authenticate, async (req, res) => {
+    console.log('In whoami route, user:', req.user);
+    // check jwt
+    console.log('Headers:', req.headers);
+    if (req.user) {
+        return res.status(200).json({ user: req.user });
+    } else {
+        return res.status(200).json({ user: null });
+    }
+});
 
 router.get('/', async (req, res) => {
     const checkIfExists = await model.Project.findOne({ where: { code: 'TEST123' } });
@@ -38,7 +50,7 @@ router.get('/', async (req, res) => {
 router.post('/upload-to-gemini', upload.single('file'), async (req, res) => {
     try {
       const file = req.file;
-      if (!file) {
+      if (!file) {  
           return res.status(400).json({ error: 'No file uploaded' });
       }
       

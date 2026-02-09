@@ -24,6 +24,10 @@ export default (sequelize, DataTypes) => {
       type: DataTypes.INTEGER,
       allowNull: false
     },
+    respondentData: {
+      type: DataTypes.JSON,
+      allowNull: true
+    },
     answers: {
       type: DataTypes.JSON,
       allowNull: true

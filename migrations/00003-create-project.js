@@ -21,13 +21,18 @@ export async function up({ context: queryInterface }) {
       allowNull: false,
       unique: true
     },
+    status: {
+      type: Sequelize.DataTypes.STRING,
+      allowNull: false
+    },
     name: {
       type: Sequelize.DataTypes.STRING,
       allowNull: false
     },
     slug: {
       type: Sequelize.DataTypes.STRING,
-      allowNull: false
+      allowNull: false,
+      unique: true
     },
     filename: {
       type: Sequelize.DataTypes.STRING,

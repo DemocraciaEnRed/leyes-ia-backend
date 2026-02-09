@@ -1,6 +1,6 @@
 export default {
   development: {
-    dialect: 'mysql',
+    dialect: 'mariadb',
     database: process.env.DATABASE_NAME || 'leyes',
     username: process.env.DATABASE_USERNAME || 'root',
     password: process.env.DATABASE_PASSWORD || 'root',

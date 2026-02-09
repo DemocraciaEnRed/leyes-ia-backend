@@ -48,6 +48,10 @@ export default (sequelize, DataTypes) => {
       allowNull: false,
       unique: true
     },
+    status: {
+      type: DataTypes.STRING,
+      allowNull: false
+    },
     name: {
       type: DataTypes.STRING,
       allowNull: false

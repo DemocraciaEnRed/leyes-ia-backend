@@ -96,7 +96,7 @@ export const fetchOrUploadFileToGemini = async (projectId) => {
 export const getProjectFields = () => {
     const lawProjectFields = z.object({
             title: z.string().describe("Titulo de proyecto de Ley. Evitar artificios como 'Proyecto de Ley para...'. Evitar que sea todo en mayusculas."),
-            description: z.string().describe("Descripcion del proyecto de Ley. Soporta formato Markdown. Usa tu mejor criterio para usar formatos como negritas, cursivas, listas, enlaces, etc. En lo posible que no supere 450 caracteres."),
+            description: z.string().describe("Descripcion del proyecto de Ley. Este campo soporta texto simple, no formato Markdown. Usa tu mejor criterio para usar formatos como negritas, cursivas, listas, enlaces, etc. En lo posible que no supere 450 caracteres."),
             summary: z.string().describe("Resumen del proyecto de Ley. Explica de forma simple y breve la idea principal del proyecto de ley, mencionando al final quien impulsa el proyecto. La idea es que no pase un parrafo y que no se extienda de mas de 768 caracteres. Soporta formato Markdown"),
             category: z.enum(getCategorias()).describe("Categoria del proyecto de Ley, debe ser una de las siguientes opciones del listado predefinido."),
             content: z.object({

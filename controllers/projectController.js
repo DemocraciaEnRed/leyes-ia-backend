@@ -78,6 +78,7 @@ export const createProject = async (req, res) => {
         const newProject = await model.Project.create({
             code: newProjectCode,
             name: name,
+            status: 'created',
             title: title,
             slug: slug,
             description: description,
@@ -90,7 +91,7 @@ export const createProject = async (req, res) => {
 
         // Now we can upload the files to DigitalOcean Spaces
         const bucket = process.env.DIGITALOCEAN_SPACES_BUCKET
-        const folder = `knowledge_bases/${newProjectCode}-files`;
+        const folder = `knowledge_bases/${newProjectCode}-files/knowledge_base`;
 
         console.log('Bucket to use:', bucket);
         console.log('Folder to use:', folder);
@@ -120,13 +121,14 @@ export const createProject = async (req, res) => {
             console.log('Uploaded file:', projectPdfFilename, '->', params.Key, 'result:', result);
             const newProjectFile = await model.ProjectFile.create({
                 projectId: newProject.id,
-                s3Bucket: bucket,
-                s3Key: params.Key,
+                type: 'main_project_pdf',
                 name: projectPdfFilename,
                 path: params.Key,
                 size: file.size,
                 mimeType: file.mimetype,
-                url: null
+                s3Bucket: bucket,
+                s3Key: params.Key,
+                url: result.Location || null,
             });
             console.log('Created ProjectFile instance:', newProjectFile);
         } catch (uploadErr) {
@@ -377,6 +379,7 @@ export const putSaveProjectFields = async (req, res) => {
         if (proposed_questions) {
             projectInstance.proposed_questions = proposed_questions;
         }
+        projectInstance.status = 'ready'
         
         await projectInstance.save();
         return res.status(200).json({
@@ -414,8 +417,14 @@ export const postPublishProject = async (req, res) => {
             }
         }
 
+        // status must be 'ready'
+        if (projectInstance.status !== 'ready') {
+            return res.status(400).json({ message: `Cannot publish project. Project status must be 'ready'. Current status: '${projectInstance.status}'` });
+        }
+
         // For now, just set the publishedAt field to current date
         projectInstance.publishedAt = new Date();
+        projectInstance.status = 'published';
         await projectInstance.save();
 
         return res.status(200).json({
@@ -443,6 +452,7 @@ export const postUnpublishProject = async (req, res) => {
 
         // Set the publishedAt field to null
         projectInstance.publishedAt = null;
+        projectInstance.status = 'ready';
         await projectInstance.save();
 
         return res.status(200).json({

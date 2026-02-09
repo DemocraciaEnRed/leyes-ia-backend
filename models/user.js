@@ -59,7 +59,6 @@ export default (sequelize, DataTypes) => {
         id: this.id,
         email: this.email,
         role: this.role,
-        lastLogin: this.lastLogin
       }
       return jwt.sign(payload, process.env.JWT_SECRET, { 
         expiresIn
@@ -75,6 +74,18 @@ export default (sequelize, DataTypes) => {
       }
       let userToken = await sequelize.models.UserToken.create(data);
       return userToken;
+    }
+
+    getUserSessionInfo() {
+      return {
+        id: this.id,
+        email: this.email,
+        firstName: this.firstName,
+        lastName: this.lastName,
+        fullName: this.fullName,
+        role: this.role,
+        imageUrl: this.imageUrl || this.gravatarUrl,
+      }
     }
   }
 
@@ -143,7 +154,7 @@ export default (sequelize, DataTypes) => {
     sequelize,
     timestamps: true,
     modelName: 'User',
-    tableName: 'users',
+    tableName: 'Users',
   });
 
   // User.beforeCreate(async (user, options) => {

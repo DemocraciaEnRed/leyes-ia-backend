@@ -16,6 +16,10 @@ export async function up({ context: queryInterface }) {
         key: 'id'
       }
     },
+    respondentData: {
+      type: Sequelize.DataTypes.JSON,
+      allowNull: true
+    },
     answers: {
       type: Sequelize.DataTypes.JSON,
       allowNull: true

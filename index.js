@@ -3,10 +3,20 @@ import 'dotenv/config';
 
 import helmet from 'helmet';
 import cors from 'cors';
-//const passport = require('passport');
 import db from './models/index.js';
 import migrations from './services/migrations.js';
 import express from 'express';
+import passport from 'passport';
+import dayjs from 'dayjs';
+import utc from 'dayjs/plugin/utc.js';
+import timezone from 'dayjs/plugin/timezone.js'; // dependent on utc plugin
+import configureJwt from './middlewares/jwt.js';
+
+
+// Set up timezone argentina for dayjs
+dayjs.extend(utc)
+dayjs.extend(timezone)
+dayjs.tz.setDefault(process.env.DEFAULT_TIMEZONE || 'America/Argentina/Buenos_Aires');
 
 // Setting up port
 let PORT = process.env.APP_PORT || 4000;
@@ -35,10 +45,11 @@ app.use(cors({
 
 // Adding middleware to parse all incoming requests as JSON
 app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
+app.use(express.urlencoded({ extended: false, limit: '50mb' }));
 
-//app.use(passport.initialize());
-//(await import('./middlewares/jwt.js')).default(passport);
+// 
+app.use(passport.initialize());
+configureJwt(passport);
 
 import routes from './routes/index.js';
 routes(app);

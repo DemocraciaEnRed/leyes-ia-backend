@@ -2,7 +2,8 @@ import express from 'express';
 import * as projectController from '../../controllers/projectController.js';
 import upload from '../../services/multer.js';
 import projectKnowledgeBaseRouter from './knowledgeBase.js';
-import projectSurveyRouter from './survey.js';
+import projectSurveyRouter from './surveys.js';
+import projectFilesRouter from './files.js';
 
 // initialize router
 const router = express.Router();
@@ -27,7 +28,8 @@ router.post('/:projectId/unpublish', projectController.postUnpublishProject);
 
 // -----------------------------------------------
 
-router.use('/:projectId/knowledge-base/', projectKnowledgeBaseRouter)
-router.use('/:projectId/survey/', projectSurveyRouter);
+router.use('/:projectId/files', projectFilesRouter);
+router.use('/:projectId/knowledge-base', projectKnowledgeBaseRouter)
+router.use('/:projectId/surveys', projectSurveyRouter);
 
 export default router;

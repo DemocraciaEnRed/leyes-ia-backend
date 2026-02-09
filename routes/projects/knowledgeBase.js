@@ -9,6 +9,8 @@ const router = express.Router({mergeParams: true});
 // BASE   /projects/:projectId/knowledge-base
 
 // GET  /projects/:projectId/knowledge-base/ready - Check if the project knowledge base is ready
+// GET  /projects/:projectId/knowledge-base/status - Get the status of the project knowledge base
+// POST /projects/:projectId/knowledge-base/retrieve - Retrieve information from the project knowledge base
 
 // -----------------------------------------------
 router.get('/status', projectKnowledgeBaseController.getStatusProjectKnowledgeBase);

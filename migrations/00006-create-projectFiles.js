@@ -16,11 +16,7 @@ export async function up({ context: queryInterface }) {
         key: 'id'
       }
     },
-    s3Bucket: {
-      type: Sequelize.DataTypes.STRING,
-      allowNull: false
-    },
-    s3Key: {
+    type: {
       type: Sequelize.DataTypes.STRING,
       allowNull: false
     },
@@ -33,6 +29,14 @@ export async function up({ context: queryInterface }) {
       allowNull: false
     },
     mimeType: {
+      type: Sequelize.DataTypes.STRING,
+      allowNull: false
+    },
+    s3Bucket: {
+      type: Sequelize.DataTypes.STRING,
+      allowNull: false
+    },
+    s3Key: {
       type: Sequelize.DataTypes.STRING,
       allowNull: false
     },

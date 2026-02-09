@@ -27,11 +27,7 @@ export default (sequelize, DataTypes) => {
       type: DataTypes.INTEGER,
       allowNull: false
     },
-    s3Bucket: {
-      type: DataTypes.STRING,
-      allowNull: false
-    },
-    s3Key: {
+    type: {
       type: DataTypes.STRING,
       allowNull: false
     },
@@ -44,6 +40,14 @@ export default (sequelize, DataTypes) => {
       allowNull: false
     },
     mimeType: {
+      type: DataTypes.STRING,
+      allowNull: false
+    },
+    s3Bucket: {
+      type: DataTypes.STRING,
+      allowNull: false
+    },
+    s3Key: {
       type: DataTypes.STRING,
       allowNull: false
     },

@@ -3,6 +3,7 @@ import knowledgeBasesRoutes from './knowledgeBases.js';
 import projectsRoutes from './projects/index.js';
 import utilsRoutes from './utils.js';
 import testRoutes from './test.js';
+import authRoutes from './auth.js';
 
 export default function routes(app) {
 	// define all the routes
@@ -10,6 +11,7 @@ export default function routes(app) {
 		res.status(200).json({ status: 'ok' });
 	});
 
+	app.use('/auth', authRoutes);
 	app.use('/agents', agentsRoutes);
 	app.use('/knowledge-bases', knowledgeBasesRoutes);
 	app.use('/projects', projectsRoutes);
