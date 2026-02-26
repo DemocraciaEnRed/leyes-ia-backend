@@ -21,7 +21,27 @@ export default (sequelize, DataTypes) => {
      */
     static associate(models) {
       // define association here
-      
+      User.belongsToMany(models.Project, {
+        through: models.ProjectMember,
+        foreignKey: 'userId',
+        otherKey: 'projectId',
+        as: 'projects',
+      });
+      User.hasMany(models.ProjectMember, {
+        foreignKey: 'userId',
+        sourceKey: 'id',
+        as: 'projectMemberships',
+      });
+      User.hasMany(models.SystemLog, {
+        foreignKey: 'performedBy',
+        sourceKey: 'id',
+        as: 'systemLogs',
+      });
+      User.hasMany(models.ProjectAiUsageEvent, {
+        foreignKey: 'userId',
+        sourceKey: 'id',
+        as: 'projectAiUsageEvents',
+      });
     }
     comparePassword(password) {
       return bcrypt.compareSync(password, this.password);
@@ -77,6 +97,8 @@ export default (sequelize, DataTypes) => {
     }
 
     getUserSessionInfo() {
+      const hasSurveyProfile = Boolean(this.dateOfBirth && this.genre && this.documentNumber);
+
       return {
         id: this.id,
         email: this.email,
@@ -85,6 +107,15 @@ export default (sequelize, DataTypes) => {
         fullName: this.fullName,
         role: this.role,
         imageUrl: this.imageUrl || this.gravatarUrl,
+        dateOfBirth: this.dateOfBirth,
+        genre: this.genre,
+        documentNumber: this.documentNumber,
+        hasSurveyProfile,
+        surveyProfileLocks: {
+          dateOfBirthLockedAt: this.dateOfBirthLockedAt,
+          genreLockedAt: this.genreLockedAt,
+          documentNumberLockedAt: this.documentNumberLockedAt,
+        },
       }
     }
   }
@@ -147,6 +178,30 @@ export default (sequelize, DataTypes) => {
       allowNull: true,
     },
     lastLogin: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
+    dateOfBirth: {
+      type: DataTypes.DATEONLY,
+      allowNull: true,
+    },
+    genre: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    documentNumber: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    dateOfBirthLockedAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
+    genreLockedAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
+    documentNumberLockedAt: {
       type: DataTypes.DATE,
       allowNull: true,
     },
