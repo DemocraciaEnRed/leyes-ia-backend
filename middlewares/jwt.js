@@ -12,7 +12,21 @@ const configureJwt = passport => {
 		new JwtStrategy(opts, async (jwt_payload, done) => {
 			console.log('[JWT Middleware] Verifying JWT:', jwt_payload);
 			await model.User.findOne({
-				attributes: ['id', 'firstName', 'lastName', 'fullName', 'role', 'imageUrl', 'email'],
+				attributes: [
+					'id',
+					'firstName',
+					'lastName',
+					'fullName',
+					'role',
+					'imageUrl',
+					'email',
+					'dateOfBirth',
+					'genre',
+					'documentNumber',
+					'dateOfBirthLockedAt',
+					'genreLockedAt',
+					'documentNumberLockedAt',
+				],
 				where: {
 					id: jwt_payload.id
 				}
