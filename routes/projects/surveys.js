@@ -1,10 +1,16 @@
 
 import express from 'express';
+import { check } from 'express-validator';
 import * as projectSurveyController from '../../controllers/projectSurveyController.js';
-import authenticate from '../../middlewares/authenticate.js';
+import { requireProjectEditAccess } from '../../middlewares/projectAccess.js';
+import requireSurveyRespondentProfile from '../../middlewares/requireSurveyRespondentProfile.js';
+import validate from '../../middlewares/validate.js';
+import msg from '../../utils/messages.js';
 
 // initialize router
 const router = express.Router({mergeParams: true});
+const projectIdValidation = [check('projectId').isInt({ min: 1 }).withMessage(msg.validationError.integer), validate];
+const surveyIdValidation = [check('surveyId').isInt({ min: 1 }).withMessage(msg.validationError.integer), validate];
 
 // -----------------------------------------------
 // BASE   /projects/:projectId/survey
@@ -13,13 +19,26 @@ const router = express.Router({mergeParams: true});
 // POST /projects/:projectId/survey/regenerate - Regenerate project survey
 
 // -----------------------------------------------
-router.post('/', authenticate, projectSurveyController.saveProjectSurvey);
-router.get('/', projectSurveyController.getProjectSurveys);
-router.post('/generate', authenticate, projectSurveyController.generateProjectSurvey);
-router.post('/regenerate', authenticate, projectSurveyController.regenerateProjectSurvey);
-router.post('/generate-base', authenticate, projectSurveyController.generateBaseSurvey);
+router.use(projectIdValidation);
 
-router.get('/:surveyId', projectSurveyController.getProjectSurveyById);
+router.post('/', requireProjectEditAccess, [
+	check('surveyTitle').optional().isString().withMessage(msg.validationError.string),
+	check('questions').optional().isArray().withMessage(msg.validationError.invalidValue),
+], validate, projectSurveyController.saveProjectSurvey);
+router.get('/', projectSurveyController.getProjectSurveys);
+router.post('/generate', requireProjectEditAccess, [
+	check('surveyRequiredQuestions').isArray().withMessage(msg.validationError.invalidValue),
+	check('surveyQuestionCount').optional().isInt({ min: 5, max: 25 }).withMessage(msg.validationError.limit),
+], validate, projectSurveyController.generateProjectSurvey);
+router.post('/regenerate', requireProjectEditAccess, [
+	check('userPromptForEdits').not().isEmpty().isString().withMessage(msg.validationError.invalidValue),
+	check('originalSurvey').not().isEmpty().isObject().withMessage(msg.validationError.invalidValue),
+	check('surveyRequiredQuestions').optional().isArray().withMessage(msg.validationError.invalidValue),
+], validate, projectSurveyController.regenerateProjectSurvey);
+router.post('/generate-base', requireProjectEditAccess, projectSurveyController.generateBaseSurvey);
+
+router.get('/:surveyId', surveyIdValidation, projectSurveyController.getProjectSurveyById);
+router.get('/:surveyId/respondent-eligibility', surveyIdValidation, requireSurveyRespondentProfile, projectSurveyController.getSurveyRespondentEligibility);
 
 export default router;
 

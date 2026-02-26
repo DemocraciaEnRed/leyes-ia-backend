@@ -1,9 +1,13 @@
 import express from 'express';
+import { check } from 'express-validator';
 import * as projectController from '../../controllers/projectController.js';
 import upload from '../../services/multer.js';
-import projectKnowledgeBaseRouter from './knowledgeBase.js';
-import projectSurveyRouter from './surveys.js';
-import projectFilesRouter from './files.js';
+import projectManageRouter from './manage.js';
+import projectRespondentEligibilityRouter from './respondentEligibility.js';
+import authenticate from '../../middlewares/authenticate.js';
+import { requireProjectViewAccess } from '../../middlewares/projectAccess.js';
+import validate from '../../middlewares/validate.js';
+import msg from '../../utils/messages.js';
 
 // initialize router
 const router = express.Router();
@@ -12,24 +16,20 @@ const router = express.Router();
 // BASE   /projects
 
 // POST   /projects - Initialize a new project with up to 3 PDF files 
-// POST   /projects/:projectId/generate-fields - Generate missing project fields based on uploaded PDF content
-// ROUTER /projects/:projectId/knowledge-base - Project Knowledge Base routes
+// ROUTER /projects/:projectId/manage - Project management routes (dashboard/admin)
 
 // -----------------------------------------------
-router.get('/', projectController.getProjects);
-router.post('/', upload.single('projectPdf'), projectController.createProject);
-router.get('/categories', projectController.getProjectCategories);
-router.get('/:projectId', projectController.getProjectById);
-router.put('/:projectId/save-fields', projectController.putSaveProjectFields);
-router.post('/:projectId/generate-fields', projectController.postGenerateProjectFields);
-router.post('/:projectId/regenerate-fields', projectController.postRegenerateProjectFields);
-router.post('/:projectId/publish', projectController.postPublishProject);
-router.post('/:projectId/unpublish', projectController.postUnpublishProject);
+router.get('/', authenticate, projectController.getProjects);
+router.post('/', authenticate, upload.single('projectPdf'), [
+	check('name').not().isEmpty().isString().withMessage(msg.validationError.invalidValue),
+	check('slug').not().isEmpty().isString().withMessage(msg.validationError.invalidValue),
+	check('authorFullname').not().isEmpty().isString().withMessage(msg.validationError.invalidValue),
+], validate, projectController.createProject);
 
-// -----------------------------------------------
+// Public (non-manage) survey respondent eligibility path for authenticated users.
+router.use('/:projectId/surveys', projectRespondentEligibilityRouter);
 
-router.use('/:projectId/files', projectFilesRouter);
-router.use('/:projectId/knowledge-base', projectKnowledgeBaseRouter)
-router.use('/:projectId/surveys', projectSurveyRouter);
+// Segmented management surface.
+router.use('/:projectId/manage', authenticate, requireProjectViewAccess, projectManageRouter);
 
 export default router;

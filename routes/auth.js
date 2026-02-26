@@ -3,6 +3,7 @@ import { check } from 'express-validator';
 
 import validate from '../middlewares/validate.js';
 import authorize from '../middlewares/authorize.js';
+import authenticate from '../middlewares/authenticate.js';
 import requiresAnon from '../middlewares/requiresAnon.js';
 
 import * as AuthController from '../controllers/authController.js';
@@ -10,6 +11,7 @@ import msg from '../utils/messages.js';
 
 // initialize router
 const router = express.Router();
+const requiresAnonymous = [authenticate, requiresAnon];
 
 // -----------------------------------------------
 // BASE     /auth
@@ -28,7 +30,7 @@ const router = express.Router();
 
 
 router.post('/signup', 
-	requiresAnon,
+	...requiresAnonymous,
 	[
     check('email').isEmail().withMessage(msg.validationError.email),
 		check('firstName').not().isEmpty().withMessage(msg.validationError.invalidValue),
@@ -41,16 +43,17 @@ router.post('/signup',
 );
 
 router.post("/login",
-	requiresAnon,
+	...requiresAnonymous,
 	[
 		check('email').isEmail().withMessage(msg.validationError.email),
-		check('password').not().isEmpty().isLength({ min: 6 }).withMessage(msg.validationError.invalidValues),
+		check('password').not().isEmpty().isLength({ min: 6 }).withMessage(msg.validationError.invalidValue),
 	],
 	validate,
 	AuthController.login
 );
 
 router.post('/refresh-token',
+	authenticate,
 	authorize(),
 	AuthController.refreshToken
 );
@@ -64,7 +67,7 @@ router.get('/verify/:token',
 );
 
 router.post('/resend', 
-	requiresAnon,
+	...requiresAnonymous,
 	[
 		check('email').isEmail().withMessage(msg.validationError.email),
 	],
@@ -73,7 +76,7 @@ router.post('/resend',
 );
 
 router.post('/forgot', 
-	requiresAnon,
+	...requiresAnonymous,
 	[
 		check('email').isEmail().withMessage(msg.validationError.email),
 	],
@@ -83,8 +86,9 @@ router.post('/forgot',
 
 
 router.post('/reset/:token',
-	requiresAnon,
+	...requiresAnonymous,
 	[
+		check('token').not().isEmpty().withMessage(msg.validationError.token),
 		check('password').not().isEmpty().isLength({ min: 6 }).withMessage(msg.validationError.password),
 	],
 	validate,
@@ -92,7 +96,7 @@ router.post('/reset/:token',
 );
 
 router.get('/session',
-	
+	authenticate,
 	AuthController.getSession
 );
 
@@ -101,6 +105,7 @@ router.post('/logout',
 );
 
 router.get('/logged',
+	authenticate,
 	AuthController.loggedIn
 );
 
