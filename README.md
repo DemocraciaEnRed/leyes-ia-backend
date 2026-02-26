@@ -60,6 +60,46 @@ Configuration files live under the `config/` folder. Common env vars used by the
 
 See `routes/` for available endpoints. This README will later include sample requests for the main endpoints (projects, knowledge bases, agents, surveys, uploads).
 
+### API segmentation (Hub vs Management)
+
+The API is now split by usage context:
+
+- **Public Hub** (citizen-facing, only published projects)
+	- `GET /hub/projects`
+	- `GET /hub/projects/categories`
+	- `GET /hub/projects/latest-published`
+	- `GET /hub/projects/slug/:projectSlug`
+
+- **Project lifecycle** (authenticated, owner/admin/legislator flows)
+	- `GET /projects` (managed listing, supports query `scope=managed`)
+	- `POST /projects` (create project)
+
+- **Project management** (dashboard/admin for a specific project)
+	- Base: `/:projectId/manage` mounted under `/projects`
+	- Example endpoints:
+		- `GET /projects/:projectId/manage`
+		- `PUT /projects/:projectId/manage/fields`
+		- `POST /projects/:projectId/manage/publish`
+		- `POST /projects/:projectId/manage/unpublish`
+		- `GET /projects/:projectId/manage/members`
+		- `POST /projects/:projectId/manage/members`
+		- `GET /projects/:projectId/manage/surveys`
+		- `GET /projects/:projectId/manage/knowledge-base/status`
+
+### Access rules
+
+- Hub endpoints do not require authentication and must only return published projects.
+- Management endpoints require authentication and project membership (or admin role).
+- Mutating management actions (publish, edit fields, members changes, survey generation) require edit permissions.
+
+Related middleware:
+
+- `authenticate`
+- `requireProjectViewAccess`
+- `requireProjectEditAccess`
+
+See [middlewares/projectAccess.js](middlewares/projectAccess.js) for role details (`owner`, `manager`, `supporter`).
+
 ## Development notes
 
 - Migrations are in `migrations/` and use Sequelize CLI patterns.
