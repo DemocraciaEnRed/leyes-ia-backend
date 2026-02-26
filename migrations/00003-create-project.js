@@ -8,14 +8,14 @@ export async function up({ context: queryInterface }) {
       primaryKey: true,
       type: Sequelize.DataTypes.INTEGER
     },
-/*     userId: {
+    projectOwnerId: {
       type: Sequelize.DataTypes.INTEGER,
       allowNull: false,
       references: {
         model: 'Users',
         key: 'id'
       }
-    }, */
+    },
     code: {
       type: Sequelize.DataTypes.STRING,
       allowNull: false,
