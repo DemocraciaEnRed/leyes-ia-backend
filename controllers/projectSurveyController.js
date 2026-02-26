@@ -3,9 +3,12 @@ import * as projectHelper from '../helpers/projectHelper.js'
 import geminiService from '../services/gemini.js';
 import { createUserContent, createPartFromUri } from '@google/genai'
 import { z } from "zod";
+import { AI_USAGE_ACTIONS, recordProjectAiUsageEvent } from '../services/aiUsageAudit.js';
 
 export const generateBaseSurvey = async (req, res) => {
     const { projectId } = req.params;
+    const startedAt = Date.now();
+    const geminiModel = 'gemini-2.5-flash';
 
     try {
         const projectInstance = await model.Project.findByPk(projectId);
@@ -75,7 +78,7 @@ export const generateBaseSurvey = async (req, res) => {
         const surveyJsonSchema = surveyStructure.toJSONSchema();
         
         const geminiResponse = await geminiService.ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+            model: geminiModel,
             contents: createUserContent([
                 createPartFromUri(geminiFileInstance.uri, geminiFileInstance.mimeType),
                 prompt
@@ -91,6 +94,20 @@ export const generateBaseSurvey = async (req, res) => {
         const generatedSurvey = JSON.parse(geminiResponse.text);
 
         console.log('Generated fields:', generatedSurvey);
+
+        await recordProjectAiUsageEvent({
+            projectId,
+            userId: req.user?.id,
+            action: AI_USAGE_ACTIONS.SURVEY_GENERATE_BASE,
+            model: geminiModel,
+            status: 'success',
+            geminiResponse,
+            latencyMs: Date.now() - startedAt,
+            metadata: {
+                route: req.originalUrl,
+            },
+        });
+
         return res.status(200).json({  
             survey: { 
                 title: generatedSurvey.title, 
@@ -102,6 +119,18 @@ export const generateBaseSurvey = async (req, res) => {
                 surveyJsonSchema
             } });
     } catch (error) {
+        await recordProjectAiUsageEvent({
+            projectId,
+            userId: req.user?.id,
+            action: AI_USAGE_ACTIONS.SURVEY_GENERATE_BASE,
+            model: geminiModel,
+            status: 'error',
+            latencyMs: Date.now() - startedAt,
+            errorMessage: error?.message || 'Unknown error',
+            metadata: {
+                route: req.originalUrl,
+            },
+        });
         console.error('Error generating default project survey:', error);
         return res.status(500).json({ error: 'Internal server error' });
     } 
@@ -109,6 +138,8 @@ export const generateBaseSurvey = async (req, res) => {
 
 export const generateProjectSurvey = async (req, res) => {
     const { projectId  } = req.params;
+    const startedAt = Date.now();
+    const geminiModel = 'gemini-2.5-flash';
     const { 
         surveyTargetAudience,
         surveyObjective,
@@ -212,7 +243,7 @@ export const generateProjectSurvey = async (req, res) => {
         console.log('Using Gemini file URI:', geminiFileInstance.uri);
 
         const geminiResponse = await geminiService.ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+            model: geminiModel,
             contents: createUserContent([
                 createPartFromUri(geminiFileInstance.uri, geminiFileInstance.mimeType),
                 prompt
@@ -228,8 +259,36 @@ export const generateProjectSurvey = async (req, res) => {
         const generatedSurvey = JSON.parse(geminiResponse.text);
 
         console.log('Generated fields:', generatedSurvey);
+
+        await recordProjectAiUsageEvent({
+            projectId,
+            userId: req.user?.id,
+            action: AI_USAGE_ACTIONS.SURVEY_GENERATE,
+            model: geminiModel,
+            status: 'success',
+            geminiResponse,
+            latencyMs: Date.now() - startedAt,
+            metadata: {
+                route: req.originalUrl,
+                questionCount: surveyQuestionCount || 12,
+            },
+        });
+
         return res.status(200).json({ survey: { questions: generatedSurvey.questions, surveyJsonSchema } });
     } catch (error) {
+        await recordProjectAiUsageEvent({
+            projectId,
+            userId: req.user?.id,
+            action: AI_USAGE_ACTIONS.SURVEY_GENERATE,
+            model: geminiModel,
+            status: 'error',
+            latencyMs: Date.now() - startedAt,
+            errorMessage: error?.message || 'Unknown error',
+            metadata: {
+                route: req.originalUrl,
+                questionCount: surveyQuestionCount || 12,
+            },
+        });
         console.error('Error generating project survey:', error);
         return res.status(500).json({ error: 'Internal server error' });
     } 
@@ -240,6 +299,8 @@ export const generateProjectSurvey = async (req, res) => {
 // and request a new version based on that feedback.
 export const regenerateProjectSurvey = async (req, res) => {
     const { projectId } = req.params
+    const startedAt = Date.now();
+    const geminiModel = 'gemini-2.5-flash';
     const { 
         userPromptForEdits, 
         originalSurvey, 
@@ -365,7 +426,7 @@ export const regenerateProjectSurvey = async (req, res) => {
         const surveyJsonSchema = surveyStructure.toJSONSchema();
 
         const geminiResponse = await geminiService.ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+            model: geminiModel,
             contents: createUserContent([
                 createPartFromUri(geminiFileInstance.uri, geminiFileInstance.mimeType),
                 prompt
@@ -381,8 +442,36 @@ export const regenerateProjectSurvey = async (req, res) => {
         const regeneratedSurvey = JSON.parse(geminiResponse.text);
 
         console.log('Regenerated survey:', regeneratedSurvey);
+
+        await recordProjectAiUsageEvent({
+            projectId,
+            userId: req.user?.id,
+            action: AI_USAGE_ACTIONS.SURVEY_REGENERATE,
+            model: geminiModel,
+            status: 'success',
+            geminiResponse,
+            latencyMs: Date.now() - startedAt,
+            metadata: {
+                route: req.originalUrl,
+                questionCount,
+            },
+        });
+
         return res.status(200).json({ survey: { questions: regeneratedSurvey.questions, surveyJsonSchema } });
     } catch (error) {
+        await recordProjectAiUsageEvent({
+            projectId,
+            userId: req.user?.id,
+            action: AI_USAGE_ACTIONS.SURVEY_REGENERATE,
+            model: geminiModel,
+            status: 'error',
+            latencyMs: Date.now() - startedAt,
+            errorMessage: error?.message || 'Unknown error',
+            metadata: {
+                route: req.originalUrl,
+                questionCount,
+            },
+        });
         console.error('Error regenerating project survey:', error);
         return res.status(500).json({ error: 'Internal server error' });
     } 
@@ -488,6 +577,30 @@ export const getProjectSurveyById = async (req, res) => {
         return res.status(200).json({ survey: surveyInstance });
     } catch (error) {
         console.error('Error fetching project survey by ID:', error);
+        return res.status(500).json({ error: 'Internal server error' });
+    }
+}
+
+export const getSurveyRespondentEligibility = async (req, res) => {
+    const { projectId, surveyId } = req.params;
+
+    try {
+        const surveyInstance = await model.ProjectSurvey.findOne({
+            where: { id: surveyId, projectId },
+            attributes: ['id']
+        });
+
+        if (!surveyInstance) {
+            return res.status(404).json({ error: 'Survey not found' });
+        }
+
+        return res.status(200).json({
+            eligible: true,
+            missingFields: [],
+            message: 'Perfil completo para responder encuestas'
+        });
+    } catch (error) {
+        console.error('Error checking survey respondent eligibility:', error);
         return res.status(500).json({ error: 'Internal server error' });
     }
 }

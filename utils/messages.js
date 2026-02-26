@@ -12,6 +12,7 @@ export default {
 			forbidden: "Acceso no autorizado - No cuenta con permiso para acceder a este recurso",
 			alreadyVerified: "La cuenta ya ha sido verificada",
 			tokenNotFound: "El token no fue encontrado o pudo haber expirado. Por favor, solicite un nuevo token",
+			tokenExpired: "El token ha expirado. Por favor, solicite un nuevo token",
 			userNotFound: "Usuario no encontrado",
 			emailNotFound: "El email no fue encontrado o es incorrecto",
 			emailNotAssociated: "La direccion de email {{email}} no se encuentra asociada a ninguna cuenta. Por favor, verifique que la dirección sea correcta"

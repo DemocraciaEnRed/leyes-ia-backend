@@ -6,24 +6,139 @@ import { client as DigitalOceanGradientClient } from '../services/gradient.js';
 import geminiService from '../services/gemini.js';
 import { createUserContent, createPartFromUri } from '@google/genai'
 import { z } from "zod";
+import { PROJECT_ACCESS_ROLES, PROJECT_MEMBER_ROLES } from '../middlewares/projectAccess.js';
+import { createSystemLog, SYSTEM_LOG_ACTIONS } from '../services/systemLog.js';
+import { AI_USAGE_ACTIONS, recordProjectAiUsageEvent } from '../services/aiUsageAudit.js';
 
 
 export const getProjects = async (req, res) => {
     try {
-        const { category, draft } = req.query;
+        const { category, draft, limit, scope } = req.query;
         let whereClause = {};
-        if (category) {
+        const include = [];
+
+        const shouldLoadManagedScope = scope === 'managed';
+
+        if (draft === 'true' && !shouldLoadManagedScope) {
+            return res.status(400).json({ message: 'draft=true requires scope=managed' });
+        }
+
+        if (shouldLoadManagedScope) {
+            if (!req.user) {
+                return res.status(401).json({ message: 'Authentication required' });
+            }
+
+            if (req.user.role !== 'admin') {
+                const managerMemberships = await model.ProjectMember.findAll({
+                    where: {
+                        userId: req.user.id,
+                        projectRole: PROJECT_MEMBER_ROLES.MANAGER,
+                    },
+                    attributes: ['projectId'],
+                });
+
+                const managerProjectIds = managerMemberships.map((membership) => membership.projectId);
+                const ownershipAndManagementFilter = [{ projectOwnerId: req.user.id }];
+
+                if (managerProjectIds.length > 0) {
+                    ownershipAndManagementFilter.push({
+                        id: {
+                            [model.Sequelize.Op.in]: managerProjectIds,
+                        },
+                    });
+                }
+
+                whereClause[model.Sequelize.Op.or] = ownershipAndManagementFilter;
+
+                include.push({
+                    model: model.ProjectMember,
+                    as: 'projectMembers',
+                    where: {
+                        userId: req.user.id,
+                        projectRole: PROJECT_MEMBER_ROLES.MANAGER,
+                    },
+                    attributes: ['id', 'projectRole', 'userId', 'projectId'],
+                    required: false,
+                });
+            }
+        }
+
+        if (category !== undefined) {
             // we only get the index
             const categorias = projectHelper.getCategorias();
-            const namedCategory = categorias[parseInt(category)];
-            whereClause.category = namedCategory;
+            const categoryIndex = parseInt(category, 10);
+            if (!Number.isNaN(categoryIndex) && categoryIndex >= 0 && categoryIndex < categorias.length) {
+                const namedCategory = categorias[categoryIndex];
+                whereClause.category = namedCategory;
+            }
         }
+
         if (draft === 'true') {
             whereClause.publishedAt = null;
-        } else if (draft === 'false' || !draft) {
+        } else if (draft === 'false') {
+            whereClause.publishedAt = { [model.Sequelize.Op.ne]: null };
+        } else if (!shouldLoadManagedScope) {
             whereClause.publishedAt = { [model.Sequelize.Op.ne]: null };
         }
-        const projects = await model.Project.findAll({ where: whereClause, order: [['createdAt', 'DESC']] });
+
+        let parsedLimit;
+        if (limit !== undefined) {
+            const rawLimit = parseInt(limit, 10);
+            if (!Number.isNaN(rawLimit) && rawLimit > 0) {
+                parsedLimit = Math.min(rawLimit, 10);
+            }
+        }
+
+        const queryOptions = {
+            where: whereClause,
+            order: [['publishedAt', 'DESC']],
+            include,
+            distinct: true,
+        };
+
+        if (parsedLimit) {
+            queryOptions.limit = parsedLimit;
+        }
+
+        const projects = await model.Project.findAll(queryOptions);
+        return res.status(200).json({ projects });
+    } catch (error) {
+        console.error(error)
+        return res.status(500).json({ message: 'There was an error' })
+    }
+}
+
+export const getLatestPublishedProjects = async (req, res) => {
+    try {
+        const projects = await model.Project.findAll({
+            where: {
+                publishedAt: {
+                    // This ensures we only get projects that have a non-null publishedAt, i.e. they are published.
+                    [model.Sequelize.Op.ne]: null,   
+                },
+                // Status must not be null or "ready"
+                status: {
+                    [model.Sequelize.Op.and]: [
+                        { [model.Sequelize.Op.ne]: null },
+                        { [model.Sequelize.Op.ne]: 'ready' }
+                    ]
+                }
+            },
+            // add the user info of the owner
+            include: [
+                {
+                    as: 'owner',
+                    model: model.User,
+                    attributes: ['id', 'firstName', 'lastName', 'fullName', 'email', 'imageUrl', 'gravatarUrl'],
+                    // include virtual
+                },
+            ],
+            attributes: ['id', 'slug', 'title', 'description', 'publishedAt', 'authorFullname', 'category'],
+            order: [['publishedAt', 'DESC']],
+            limit: 5,
+        });
+
+
         return res.status(200).json({ projects });
     } catch (error) {
         console.error(error)
@@ -38,6 +153,73 @@ export const getProjectById = async (req, res) => {
         if (!project) {
             return res.status(404).json({ message: 'Project not found' });
         }
+
+        let currentUserMembership = null;
+        if (req.user && req.user.role !== 'admin') {
+            if (project.projectOwnerId === req.user.id) {
+                currentUserMembership = {
+                    id: null,
+                    projectRole: PROJECT_ACCESS_ROLES.OWNER,
+                    userId: req.user.id,
+                    projectId: project.id,
+                };
+            } else {
+                currentUserMembership = await model.ProjectMember.findOne({
+                    where: {
+                        projectId,
+                        userId: req.user.id,
+                    },
+                    attributes: ['id', 'projectRole', 'userId', 'projectId'],
+                });
+            }
+        }
+
+        return res.status(200).json({
+            project,
+            currentUserMembership,
+        });
+    } catch (error) {
+        console.error(error)
+        return res.status(500).json({ message: 'There was an error' })
+    }
+}
+
+export const getPublishedProjectBySlug = async (req, res) => {
+    try {
+        const { projectSlug } = req.params;
+
+        const project = await model.Project.findOne({
+            where: {
+                slug: projectSlug,
+                status: 'published',
+                publishedAt: {
+                    [model.Sequelize.Op.ne]: null
+                }
+            },
+            attributes: [
+                'id',
+                'code',
+                'status',
+                'name',
+                'slug',
+                'filename',
+                'authorFullname',
+                'title',
+                'category',
+                'description',
+                'summary',
+                'content',
+                'proposed_questions',
+                'publishedAt',
+                'createdAt',
+                'updatedAt'
+            ]
+        });
+
+        if (!project) {
+            return res.status(404).json({ message: 'Project not found' });
+        }
+
         return res.status(200).json({ project });
     } catch (error) {
         console.error(error)
@@ -59,6 +241,14 @@ export const getProjectCategories = async (req, res) => {
 
 export const createProject = async (req, res) => {
     try {
+        if (!req.user) {
+            return res.status(401).json({ message: 'Authentication required' });
+        }
+
+        if (!['legislator', 'admin'].includes(req.user.role)) {
+            return res.status(403).json({ message: 'Forbidden: Only legislator or admin can create projects' });
+        }
+
         // Implementation for creating a project.
         // It will recieve data and files.
         // One file is identified as the main pdf, the "proyecto de ley"
@@ -76,6 +266,7 @@ export const createProject = async (req, res) => {
         let newProjectCode = await projectHelper.generateUniqueProjectCode(model);
         const projectPdfFilename = `${newProjectCode}-project.pdf`;
         const newProject = await model.Project.create({
+            projectOwnerId: req.user.id,
             code: newProjectCode,
             name: name,
             status: 'created',
@@ -169,6 +360,16 @@ export const createProject = async (req, res) => {
             lastAPIResponseAt: new Date(),
         });
 
+        await createSystemLog({
+            performedBy: req.user.id,
+            action: SYSTEM_LOG_ACTIONS.PROJECT_CREATED,
+            metadata: {
+                projectId: newProject.id,
+                projectCode: newProject.code,
+                ownerUserId: req.user.id,
+            },
+        });
+
         return res.status(200).json({
             message: 'Project initialized successfully',
             project: {
@@ -193,8 +394,11 @@ export const createProject = async (req, res) => {
 
 export const postGenerateProjectFields = async (req, res) => {
     // Implementation for generating project fields using AI.
+    const { projectId } = req.params;
+    const startedAt = Date.now();
+    const geminiModel = 'gemini-2.5-flash';
+
     try {
-        const { projectId } = req.params;
         const projectInstance = await model.Project.findByPk(projectId);
 
         if (!projectInstance) {
@@ -247,7 +451,7 @@ export const postGenerateProjectFields = async (req, res) => {
         console.log('Using Gemini file URI:', geminiFileInstance.uri);
 
         const geminiResponse = await geminiService.ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+            model: geminiModel,
             contents: createUserContent([
                 createPartFromUri(geminiFileInstance.uri, geminiFileInstance.mimeType),
                 prompt
@@ -264,6 +468,19 @@ export const postGenerateProjectFields = async (req, res) => {
 
         console.log('Generated fields:', generatedFields);
 
+        await recordProjectAiUsageEvent({
+            projectId,
+            userId: req.user?.id,
+            action: AI_USAGE_ACTIONS.PROJECT_FIELDS_GENERATE,
+            model: geminiModel,
+            status: 'success',
+            geminiResponse,
+            latencyMs: Date.now() - startedAt,
+            metadata: {
+                route: req.originalUrl,
+            },
+        });
+
         return res.status(200).json({
             message: 'Project fields generated successfully', project: {
                 id: projectInstance.id,
@@ -277,6 +494,18 @@ export const postGenerateProjectFields = async (req, res) => {
         });
 
     } catch (error) {
+        await recordProjectAiUsageEvent({
+            projectId,
+            userId: req.user?.id,
+            action: AI_USAGE_ACTIONS.PROJECT_FIELDS_GENERATE,
+            model: geminiModel,
+            status: 'error',
+            latencyMs: Date.now() - startedAt,
+            errorMessage: error?.message || 'Unknown error',
+            metadata: {
+                route: req.originalUrl,
+            },
+        });
         console.error(error)
         return res.status(500).json({ message: 'There was an error' })
     }
@@ -284,8 +513,11 @@ export const postGenerateProjectFields = async (req, res) => {
 
 export const postRegenerateProjectFields = async (req, res) => {
     // Implementation for regenerating project fields using AI.
+    const { projectId } = req.params
+    const startedAt = Date.now();
+    const geminiModel = 'gemini-2.5-flash';
+
     try {
-        const { projectId } = req.params
         const { userEditRequest, previousLawProjectFields } = req.body;
         const projectInstance = await model.Project.findByPk(projectId);
 
@@ -328,7 +560,7 @@ export const postRegenerateProjectFields = async (req, res) => {
         console.log('Using Gemini file URI:', geminiFileInstance.uri);
 
         const geminiResponse = await geminiService.ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+            model: geminiModel,
             contents: createUserContent([
                 createPartFromUri(geminiFileInstance.uri, geminiFileInstance.mimeType),
                 prompt
@@ -344,6 +576,20 @@ export const postRegenerateProjectFields = async (req, res) => {
         const regeneratedFields = JSON.parse(geminiResponse.text);
 
         console.log('Regenerated fields:', regeneratedFields);
+
+        await recordProjectAiUsageEvent({
+            projectId,
+            userId: req.user?.id,
+            action: AI_USAGE_ACTIONS.PROJECT_FIELDS_REGENERATE,
+            model: geminiModel,
+            status: 'success',
+            geminiResponse,
+            latencyMs: Date.now() - startedAt,
+            metadata: {
+                route: req.originalUrl,
+            },
+        });
+
         return res.status(200).json({ project: {
             id: projectInstance.id,
             title: regeneratedFields.title,
@@ -354,6 +600,18 @@ export const postRegenerateProjectFields = async (req, res) => {
             proposed_questions: regeneratedFields.proposed_questions || []
         } });
     } catch (error) {
+        await recordProjectAiUsageEvent({
+            projectId,
+            userId: req.user?.id,
+            action: AI_USAGE_ACTIONS.PROJECT_FIELDS_REGENERATE,
+            model: geminiModel,
+            status: 'error',
+            latencyMs: Date.now() - startedAt,
+            errorMessage: error?.message || 'Unknown error',
+            metadata: {
+                route: req.originalUrl,
+            },
+        });
         console.error('Error regenerating project fields:', error);
         return res.status(500).json({ error: 'Internal server error' });
     } 
@@ -382,6 +640,25 @@ export const putSaveProjectFields = async (req, res) => {
         projectInstance.status = 'ready'
         
         await projectInstance.save();
+
+        if (req.user) {
+            await createSystemLog({
+                performedBy: req.user.id,
+                action: SYSTEM_LOG_ACTIONS.PROJECT_UPDATED,
+                metadata: {
+                    projectId: projectInstance.id,
+                    changedFields: {
+                        title: title !== undefined,
+                        description: description !== undefined,
+                        summary: summary !== undefined,
+                        category: category !== undefined,
+                        content: content !== undefined,
+                        proposed_questions: proposed_questions !== undefined,
+                    },
+                },
+            });
+        }
+
         return res.status(200).json({
             message: 'Project fields saved successfully', project: {
                 id: projectInstance.id,
@@ -409,17 +686,30 @@ export const postPublishProject = async (req, res) => {
             return res.status(404).json({ message: 'Project not found' });
         }
 
-        // check the following fields are set:
-        const requiredFields = ['title', 'description', 'summary', 'category', 'content'];
-        for (const field of requiredFields) {
-            if (!projectInstance[field] || (typeof projectInstance[field] === 'object' && Object.keys(projectInstance[field]).length === 0)) {
-                return res.status(400).json({ message: `Cannot publish project. Field "${field}" is missing or empty.` });
-            }
+        const summaryIncompleteFields = projectInstance.summaryIncompleteFields || [];
+
+        if (summaryIncompleteFields.length > 0) {
+            return res.status(400).json({
+                error: 'PROJECT_SUMMARY_INCOMPLETE',
+                message: 'Cannot publish project. Summary fields are incomplete.',
+                summaryIncompleteFields,
+            });
         }
 
-        // status must be 'ready'
-        if (projectInstance.status !== 'ready') {
-            return res.status(400).json({ message: `Cannot publish project. Project status must be 'ready'. Current status: '${projectInstance.status}'` });
+        if (projectInstance.status === 'created') {
+            return res.status(400).json({
+                error: 'PROJECT_STATUS_NOT_READY',
+                message: `Cannot publish project. Project status cannot be 'created'. Current status: '${projectInstance.status}'`,
+                summaryIncompleteFields,
+            });
+        }
+
+        if (projectInstance.publishedAt) {
+            return res.status(400).json({
+                error: 'PROJECT_ALREADY_PUBLISHED',
+                message: 'Cannot publish project. Project is already published.',
+                summaryIncompleteFields,
+            });
         }
 
         // For now, just set the publishedAt field to current date
@@ -427,10 +717,22 @@ export const postPublishProject = async (req, res) => {
         projectInstance.status = 'published';
         await projectInstance.save();
 
+        if (req.user) {
+            await createSystemLog({
+                performedBy: req.user.id,
+                action: SYSTEM_LOG_ACTIONS.PROJECT_PUBLISHED,
+                metadata: {
+                    projectId: projectInstance.id,
+                },
+            });
+        }
+
         return res.status(200).json({
             message: 'Project published successfully', project: {
                 id: projectInstance.id,
-                publishedAt: projectInstance.publishedAt
+                status: projectInstance.status,
+                publishedAt: projectInstance.publishedAt,
+                summaryIncompleteFields,
             }
         });
         
@@ -455,15 +757,91 @@ export const postUnpublishProject = async (req, res) => {
         projectInstance.status = 'ready';
         await projectInstance.save();
 
+        if (req.user) {
+            await createSystemLog({
+                performedBy: req.user.id,
+                action: SYSTEM_LOG_ACTIONS.PROJECT_UNPUBLISHED,
+                metadata: {
+                    projectId: projectInstance.id,
+                },
+            });
+        }
+
         return res.status(200).json({
             message: 'Project unpublished successfully', project: {
                 id: projectInstance.id,
-                publishedAt: projectInstance.publishedAt
+                status: projectInstance.status,
+                publishedAt: projectInstance.publishedAt,
+                summaryIncompleteFields: projectInstance.summaryIncompleteFields || [],
             }
         });
         
     } catch (error) {
         console.error(error)
         return res.status(500).json({ message: 'There was an error' })
+    }
+}
+
+export const patchProjectOwner = async (req, res) => {
+    try {
+        if (!req.user || req.user.role !== 'admin') {
+            return res.status(403).json({ message: 'Forbidden: Only admin can change project owner' });
+        }
+
+        const { projectId } = req.params;
+        const nextOwnerUserId = Number.parseInt(req.body?.projectOwnerId, 10);
+
+        if (Number.isNaN(nextOwnerUserId)) {
+            return res.status(400).json({ message: 'Missing or invalid projectOwnerId' });
+        }
+
+        const [projectInstance, nextOwnerUser] = await Promise.all([
+            model.Project.findByPk(projectId),
+            model.User.findByPk(nextOwnerUserId),
+        ]);
+
+        if (!projectInstance) {
+            return res.status(404).json({ message: 'Project not found' });
+        }
+
+        if (!nextOwnerUser) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        const previousOwnerUserId = projectInstance.projectOwnerId;
+        if (previousOwnerUserId === nextOwnerUserId) {
+            return res.status(200).json({
+                message: 'Project owner unchanged',
+                project: {
+                    id: projectInstance.id,
+                    projectOwnerId: projectInstance.projectOwnerId,
+                },
+            });
+        }
+
+        projectInstance.projectOwnerId = nextOwnerUserId;
+        await projectInstance.save();
+
+        await createSystemLog({
+            performedBy: req.user.id,
+            action: SYSTEM_LOG_ACTIONS.MEMBER_ROLE_UPDATED,
+            metadata: {
+                projectId: projectInstance.id,
+                previousOwnerUserId,
+                newOwnerUserId: nextOwnerUserId,
+                actionType: 'owner_transfer',
+            },
+        });
+
+        return res.status(200).json({
+            message: 'Project owner updated successfully',
+            project: {
+                id: projectInstance.id,
+                projectOwnerId: projectInstance.projectOwnerId,
+            },
+        });
+    } catch (error) {
+        console.error('Error updating project owner:', error);
+        return res.status(500).json({ message: 'There was an error' });
     }
 }
