@@ -1,5 +1,35 @@
 import { Model } from 'sequelize';
 
+const SUMMARY_REQUIRED_FIELDS = [
+  'title',
+  'category',
+  'description',
+  'summary',
+  'content',
+  'proposed_questions',
+];
+
+const isValueMissing = (value) => {
+  if (value === null || value === undefined) {
+    return true;
+  }
+
+  if (typeof value === 'string') {
+    return value.trim().length === 0;
+  }
+
+  if (Array.isArray(value)) {
+    return value.length === 0 || value.every((item) => isValueMissing(item));
+  }
+
+  if (typeof value === 'object') {
+    const values = Object.values(value);
+    return values.length === 0 || values.every((item) => isValueMissing(item));
+  }
+
+  return false;
+};
+
 export default (sequelize, DataTypes) => {
   
   class Project extends Model {
@@ -20,6 +50,22 @@ export default (sequelize, DataTypes) => {
      */
     static associate(models) {
       // define association here
+      Project.belongsTo(models.User, {
+        foreignKey: 'projectOwnerId',
+        targetKey: 'id',
+        as: 'owner',
+      });
+      Project.belongsToMany(models.User, {
+        through: models.ProjectMember,
+        foreignKey: 'projectId',
+        otherKey: 'userId',
+        as: 'members',
+      });
+      Project.hasMany(models.ProjectMember, {
+        foreignKey: 'projectId',
+        sourceKey: 'id',
+        as: 'projectMembers',
+      });
       Project.hasOne(models.KnowledgeBase, {
         foreignKey: 'projectId',
         sourceKey: 'id',
@@ -35,6 +81,11 @@ export default (sequelize, DataTypes) => {
         sourceKey: 'id',
         as: 'projectSurveys',
       });
+      Project.hasMany(models.ProjectAiUsageEvent, {
+        foreignKey: 'projectId',
+        sourceKey: 'id',
+        as: 'projectAiUsageEvents',
+      });
       Project.hasOne(models.GeminiFile, {
         foreignKey: 'projectId',
         sourceKey: 'id',
@@ -43,6 +94,10 @@ export default (sequelize, DataTypes) => {
     }
   }
   Project.init({
+    projectOwnerId: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+    },
     code: {
       type: DataTypes.STRING,
       allowNull: false,
@@ -91,6 +146,12 @@ export default (sequelize, DataTypes) => {
     proposed_questions:{ 
       type: DataTypes.JSON,
       allowNull: true
+    },
+    summaryIncompleteFields: {
+      type: DataTypes.VIRTUAL,
+      get() {
+        return SUMMARY_REQUIRED_FIELDS.filter((field) => isValueMissing(this.getDataValue(field)));
+      }
     },
     publishedAt: {
       type: DataTypes.DATE,
