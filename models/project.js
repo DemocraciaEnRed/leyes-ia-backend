@@ -81,6 +81,11 @@ export default (sequelize, DataTypes) => {
         sourceKey: 'id',
         as: 'projectSurveys',
       });
+      Project.belongsTo(models.ProjectSurvey, {
+        foreignKey: 'featuredSurveyId',
+        targetKey: 'id',
+        as: 'featuredSurvey',
+      });
       Project.hasMany(models.ProjectAiUsageEvent, {
         foreignKey: 'projectId',
         sourceKey: 'id',
@@ -145,6 +150,10 @@ export default (sequelize, DataTypes) => {
     },
     proposed_questions:{ 
       type: DataTypes.JSON,
+      allowNull: true
+    },
+    featuredSurveyId: {
+      type: DataTypes.INTEGER,
       allowNull: true
     },
     summaryIncompleteFields: {

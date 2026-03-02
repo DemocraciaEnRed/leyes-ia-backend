@@ -5,6 +5,55 @@ import { createUserContent, createPartFromUri } from '@google/genai'
 import { z } from "zod";
 import { AI_USAGE_ACTIONS, recordProjectAiUsageEvent } from '../services/aiUsageAudit.js';
 
+const { Op } = model.Sequelize;
+
+const getPublicAvailableSurveyWhereClause = () => ({
+    public: true,
+    visible: true,
+    [Op.or]: [
+        { closedAt: null },
+        { closedAt: { [Op.gt]: new Date() } }
+    ]
+});
+
+const publicProjectWhereClause = (projectSlug) => ({
+    slug: projectSlug,
+    status: 'published',
+    publishedAt: {
+        [Op.ne]: null
+    }
+});
+
+const mapPublicSurvey = (survey) => ({
+    id: survey.id,
+    projectId: survey.projectId,
+    title: survey.title,
+    about: survey.about,
+    type: survey.type,
+    welcomeTitle: survey.welcomeTitle,
+    welcomeDescription: survey.welcomeDescription,
+    responsesCount: survey.responsesCount,
+    closedAt: survey.closedAt,
+    createdAt: survey.createdAt,
+    updatedAt: survey.updatedAt
+});
+
+const isSurveyActive = (survey) => {
+    if (!survey) {
+        return false;
+    }
+
+    if (!survey.public || !survey.visible) {
+        return false;
+    }
+
+    if (!survey.closedAt) {
+        return true;
+    }
+
+    return new Date(survey.closedAt).getTime() > Date.now();
+};
+
 export const generateBaseSurvey = async (req, res) => {
     const { projectId } = req.params;
     const startedAt = Date.now();
@@ -480,6 +529,14 @@ export const regenerateProjectSurvey = async (req, res) => {
 export const getProjectSurveys = async (req, res) => {
     const { projectId } = req.params;
     try {
+        const projectInstance = await model.Project.findByPk(projectId, {
+            attributes: ['id', 'featuredSurveyId']
+        });
+
+        if (!projectInstance) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
         // gets all the surveys for the project
         const surveys = await model.ProjectSurvey.findAll({
             where: { projectId },
@@ -491,9 +548,126 @@ export const getProjectSurveys = async (req, res) => {
             ]
         });
 
-        return res.status(200).json({ surveys });
+        const mappedSurveys = surveys.map((surveyInstance) => ({
+            ...surveyInstance.toJSON(),
+            isFeatured: projectInstance.featuredSurveyId === surveyInstance.id,
+            canEdit: !isSurveyActive(surveyInstance)
+        }));
+
+        return res.status(200).json({
+            surveys: mappedSurveys,
+            featuredSurveyId: projectInstance.featuredSurveyId
+        });
     } catch (error) {
         console.error('Error fetching project surveys:', error);
+        return res.status(500).json({ error: 'Internal server error' });
+    }
+}
+
+export const updateProjectSurvey = async (req, res) => {
+    const { projectId, surveyId } = req.params;
+    const {
+        surveyTitle,
+        surveyAbout,
+        surveyType,
+        surveyPublic,
+        surveyVisible,
+        allowAnonymousResponses,
+        surveyWelcomeTitle,
+        surveyWelcomeSubtitle,
+        surveyClosedAt,
+        questions,
+        surveyJsonSchema,
+        surveyObjective,
+        surveyTargetAudience,
+        surveyContext,
+        surveyUserInstructions,
+        surveyRequiredQuestions
+    } = req.body;
+
+    try {
+        const projectInstance = await model.Project.findByPk(projectId, {
+            attributes: ['id']
+        });
+
+        if (!projectInstance) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        const surveyInstance = await model.ProjectSurvey.findOne({
+            where: { id: surveyId, projectId }
+        });
+
+        if (!surveyInstance) {
+            return res.status(404).json({ error: 'Survey not found' });
+        }
+
+        if (isSurveyActive(surveyInstance)) {
+            return res.status(409).json({
+                error: 'This survey is active and cannot be edited'
+            });
+        }
+
+        if (surveyTitle !== undefined) {
+            surveyInstance.title = surveyTitle || 'Encuesta sin título';
+        }
+        if (surveyAbout !== undefined) {
+            surveyInstance.about = surveyAbout || null;
+        }
+        if (surveyType !== undefined) {
+            surveyInstance.type = surveyType || surveyInstance.type;
+        }
+        if (surveyPublic !== undefined) {
+            surveyInstance.public = surveyPublic;
+        }
+        if (surveyVisible !== undefined) {
+            surveyInstance.visible = surveyVisible;
+        }
+        if (allowAnonymousResponses !== undefined) {
+            surveyInstance.allowAnonymousResponses = allowAnonymousResponses;
+        }
+        if (surveyWelcomeTitle !== undefined) {
+            surveyInstance.welcomeTitle = surveyWelcomeTitle || 'Bienvenido a la encuesta';
+        }
+        if (surveyWelcomeSubtitle !== undefined) {
+            surveyInstance.welcomeDescription = surveyWelcomeSubtitle || null;
+        }
+        if (surveyClosedAt !== undefined) {
+            surveyInstance.closedAt = surveyClosedAt || null;
+        }
+        if (questions !== undefined) {
+            surveyInstance.questions = questions || [];
+        }
+        if (surveyJsonSchema !== undefined) {
+            surveyInstance.surveyJsonSchema = surveyJsonSchema || null;
+        }
+        if (surveyObjective !== undefined) {
+            surveyInstance.objective = surveyObjective || null;
+        }
+        if (surveyTargetAudience !== undefined) {
+            surveyInstance.targetAudience = surveyTargetAudience || null;
+        }
+        if (surveyContext !== undefined) {
+            surveyInstance.context = surveyContext || null;
+        }
+        if (surveyUserInstructions !== undefined) {
+            surveyInstance.userInstructions = surveyUserInstructions || null;
+        }
+        if (surveyRequiredQuestions !== undefined) {
+            surveyInstance.requiredQuestions = surveyRequiredQuestions || null;
+        }
+
+        await surveyInstance.save();
+
+        return res.status(200).json({
+            message: 'Survey updated successfully',
+            survey: {
+                ...surveyInstance.toJSON(),
+                canEdit: !isSurveyActive(surveyInstance)
+            }
+        });
+    } catch (error) {
+        console.error('Error updating project survey:', error);
         return res.status(500).json({ error: 'Internal server error' });
     }
 }
@@ -566,6 +740,14 @@ export const getProjectSurveyById = async (req, res) => {
     const { projectId, surveyId } = req.params;
 
     try {
+        const projectInstance = await model.Project.findByPk(projectId, {
+            attributes: ['id', 'featuredSurveyId']
+        });
+
+        if (!projectInstance) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
         const surveyInstance = await model.ProjectSurvey.findOne({
             where: { id: surveyId, projectId },
         });
@@ -574,9 +756,171 @@ export const getProjectSurveyById = async (req, res) => {
             return res.status(404).json({ error: 'Survey not found' });
         }
 
-        return res.status(200).json({ survey: surveyInstance });
+        return res.status(200).json({
+            survey: {
+                ...surveyInstance.toJSON(),
+                isFeatured: projectInstance.featuredSurveyId === surveyInstance.id,
+                canEdit: !isSurveyActive(surveyInstance)
+            },
+            featuredSurveyId: projectInstance.featuredSurveyId
+        });
     } catch (error) {
         console.error('Error fetching project survey by ID:', error);
+        return res.status(500).json({ error: 'Internal server error' });
+    }
+}
+
+export const setProjectFeaturedSurvey = async (req, res) => {
+    const { projectId, surveyId } = req.params;
+
+    try {
+        const projectInstance = await model.Project.findByPk(projectId, {
+            attributes: ['id', 'featuredSurveyId']
+        });
+
+        if (!projectInstance) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        const surveyInstance = await model.ProjectSurvey.findOne({
+            where: {
+                id: surveyId,
+                projectId,
+                ...getPublicAvailableSurveyWhereClause()
+            },
+            attributes: ['id', 'title', 'projectId', 'public', 'visible', 'closedAt']
+        });
+
+        if (!surveyInstance) {
+            return res.status(404).json({ error: 'Survey not found or unavailable to be featured' });
+        }
+
+        projectInstance.featuredSurveyId = surveyInstance.id;
+        await projectInstance.save();
+
+        return res.status(200).json({
+            message: 'Featured survey updated successfully',
+            featuredSurveyId: surveyInstance.id,
+            survey: {
+                ...surveyInstance.toJSON(),
+                isFeatured: true
+            }
+        });
+    } catch (error) {
+        console.error('Error setting featured survey:', error);
+        return res.status(500).json({ error: 'Internal server error' });
+    }
+}
+
+export const clearProjectFeaturedSurvey = async (req, res) => {
+    const { projectId } = req.params;
+
+    try {
+        const projectInstance = await model.Project.findByPk(projectId, {
+            attributes: ['id', 'featuredSurveyId']
+        });
+
+        if (!projectInstance) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        if (!projectInstance.featuredSurveyId) {
+            return res.status(200).json({
+                message: 'Featured survey already cleared',
+                featuredSurveyId: null
+            });
+        }
+
+        projectInstance.featuredSurveyId = null;
+        await projectInstance.save();
+
+        return res.status(200).json({
+            message: 'Featured survey cleared successfully',
+            featuredSurveyId: null
+        });
+    } catch (error) {
+        console.error('Error clearing featured survey:', error);
+        return res.status(500).json({ error: 'Internal server error' });
+    }
+}
+
+export const getPublicFeaturedSurveyByProjectSlug = async (req, res) => {
+    const { projectSlug } = req.params;
+
+    try {
+        const projectInstance = await model.Project.findOne({
+            where: publicProjectWhereClause(projectSlug),
+            attributes: ['id', 'slug', 'featuredSurveyId']
+        });
+
+        if (!projectInstance) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        if (!projectInstance.featuredSurveyId) {
+            return res.status(200).json({
+                hasFeaturedSurvey: false,
+                featuredSurvey: null
+            });
+        }
+
+        const featuredSurvey = await model.ProjectSurvey.findOne({
+            where: {
+                id: projectInstance.featuredSurveyId,
+                projectId: projectInstance.id,
+                ...getPublicAvailableSurveyWhereClause()
+            }
+        });
+
+        if (!featuredSurvey) {
+            return res.status(200).json({
+                hasFeaturedSurvey: false,
+                featuredSurvey: null
+            });
+        }
+
+        return res.status(200).json({
+            hasFeaturedSurvey: true,
+            featuredSurvey: mapPublicSurvey(featuredSurvey)
+        });
+    } catch (error) {
+        console.error('Error fetching public featured survey:', error);
+        return res.status(500).json({ error: 'Internal server error' });
+    }
+}
+
+export const getPublicAvailableSurveysByProjectSlug = async (req, res) => {
+    const { projectSlug } = req.params;
+
+    try {
+        const projectInstance = await model.Project.findOne({
+            where: publicProjectWhereClause(projectSlug),
+            attributes: ['id', 'slug', 'featuredSurveyId']
+        });
+
+        if (!projectInstance) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        const surveys = await model.ProjectSurvey.findAll({
+            where: {
+                projectId: projectInstance.id,
+                ...getPublicAvailableSurveyWhereClause()
+            },
+            order: [['createdAt', 'DESC']]
+        });
+
+        const availableSurveys = surveys.map((surveyInstance) => ({
+            ...mapPublicSurvey(surveyInstance),
+            isFeatured: projectInstance.featuredSurveyId === surveyInstance.id
+        }));
+
+        return res.status(200).json({
+            surveys: availableSurveys,
+            total: availableSurveys.length
+        });
+    } catch (error) {
+        console.error('Error fetching public available surveys:', error);
         return res.status(500).json({ error: 'Internal server error' });
     }
 }
