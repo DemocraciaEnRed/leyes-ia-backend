@@ -245,8 +245,8 @@ export const createProject = async (req, res) => {
             return res.status(401).json({ message: 'Authentication required' });
         }
 
-        if (!['legislator', 'admin'].includes(req.user.role)) {
-            return res.status(403).json({ message: 'Forbidden: Only legislator or admin can create projects' });
+        if (req.user.role !== 'legislator') {
+            return res.status(403).json({ message: 'Forbidden: Only legislators can create projects' });
         }
 
         // Implementation for creating a project.
@@ -405,6 +405,13 @@ export const postGenerateProjectFields = async (req, res) => {
             return res.status(404).json({ message: 'Project not found' });
         }
 
+        if (projectInstance.status === 'published') {
+            return res.status(400).json({
+                error: 'PROJECT_PUBLISHED_READ_ONLY',
+                message: 'Cannot generate fields for a published project. Unpublish it first.',
+            });
+        }
+
         // Use Gemini to generate project fields based on the knowledge base
 
         //const path = (projectInstance.digitalOceanBucketFolder || '').replace(/^\//, '');
@@ -525,6 +532,13 @@ export const postRegenerateProjectFields = async (req, res) => {
             return res.status(404).json({ error: 'Project not found' });
         }
 
+        if (projectInstance.status === 'published') {
+            return res.status(400).json({
+                error: 'PROJECT_PUBLISHED_READ_ONLY',
+                message: 'Cannot regenerate fields for a published project. Unpublish it first.',
+            });
+        }
+
         const geminiFileInstance = await projectHelper.fetchOrUploadFileToGemini(projectId);
 
         // Wait for the file to be active in Gemini
@@ -626,6 +640,13 @@ export const putSaveProjectFields = async (req, res) => {
 
         if (!projectInstance) {
             return res.status(404).json({ message: 'Project not found' });
+        }
+
+        if (projectInstance.status === 'published') {
+            return res.status(400).json({
+                error: 'PROJECT_PUBLISHED_READ_ONLY',
+                message: 'Cannot edit fields for a published project. Unpublish it first.',
+            });
         }
 
         // Update the project fields
