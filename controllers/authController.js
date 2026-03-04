@@ -77,7 +77,6 @@ export const register = async (req, res) => {
 			firstName,
 			lastName,
 			password,
-			magicWord,
 			dateOfBirth,
 			genre,
 			documentNumber,
@@ -92,13 +91,7 @@ export const register = async (req, res) => {
 			console.log('user exists')
 			return res.status(401).json({ message: 'El email ya se encuentra registrado' });
 		} 
-		// if magic word is incorrect, return an error
-		console.log('checking magic word')
-		if(magicWord && process.env.MAGIC_WORD && magicWord !== process.env.MAGIC_WORD) {
-			console.log('magic word incorrect')
-			return res.status(401).json({ message: 'Palabra mágica incorrecta' });
-		}
-		console.log('magic word correct, creating user')
+		console.log('creating user')
 
 		const normalizedDateOfBirth = normalizeDateOfBirth(dateOfBirth);
 		const normalizedGenre = normalizeGenre(genre);
@@ -165,33 +158,19 @@ export const register = async (req, res) => {
 			...optionalProfileData,
 		});
 		console.log('created user')
-		// In dev mode, automatically verify email
-		if(process.env.NODE_ENV === 'development') {
-			console.log('development mode, auto verifying email')
-			await newUser.update({ emailVerified: true, verifiedAt: new Date() });
-		}
-		// or if the magic word is correct, also verify email
-		if(magicWord && process.env.MAGIC_WORD && magicWord === process.env.MAGIC_WORD) {
-			console.log('magic word correct, auto verifying email')
-			await newUser.update({ emailVerified: true, verifiedAt: new Date() });
-		}
-		
-		const token = await newUser.generateVerificationToken();
-		console.log('got token')
+		await newUser.update({ emailVerified: true, verifiedAt: now });
 
-		// make the url
-		const url = `${process.env.APP_URL}/signup/verify?token=${token.token}`;
+		// Temporalmente desactivado en prototipo: generación de token y envío de email de verificación.
+		// const token = await newUser.generateVerificationToken();
+		// const url = `${process.env.APP_URL}/signup/verify?token=${token.token}`;
+		// try {
+		// 	await AuthHelper.sendSignupEmail(newUser, url);
+		// } catch (error) {
+		// 	console.error(error);
+		// 	console.log('cannot send mail')
+		// }
 
-		// send the email
-		try {
-			await AuthHelper.sendSignupEmail(newUser, url);
-		} catch (error) {
-			console.error(error);
-			console.log('cannot send mail')
-		}
-
-		return res.status(201).json({ message: 'Usuario registrado. Por favor, valida tu cuenta',
-       url: url,
+		return res.status(201).json({ message: 'Usuario registrado exitosamente',
        token: await newUser.generateJWT(),
        user: newUser.getUserSessionInfo()
       });
