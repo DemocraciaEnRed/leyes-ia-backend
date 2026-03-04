@@ -6,6 +6,10 @@ import msg from '../utils/messages.js';
 const ALLOWED_GENRES = ['masculino', 'femenino', 'no_binario', 'otro', 'prefiero_no_decir'];
 
 const normalizeDateOfBirth = (value) => {
+	if (value === undefined || value === null || value === '') {
+		return undefined;
+	}
+
 	if (typeof value !== 'string') {
 		return null;
 	}
@@ -24,6 +28,10 @@ const normalizeDateOfBirth = (value) => {
 };
 
 const normalizeGenre = (value) => {
+	if (value === undefined || value === null || value === '') {
+		return undefined;
+	}
+
 	if (typeof value !== 'string') {
 		return null;
 	}
@@ -37,6 +45,10 @@ const normalizeGenre = (value) => {
 };
 
 const normalizeDocumentNumber = (value) => {
+	if (value === undefined || value === null || value === '') {
+		return undefined;
+	}
+
 	if (typeof value !== 'string' && typeof value !== 'number') {
 		return null;
 	}
@@ -91,47 +103,66 @@ export const register = async (req, res) => {
 		const normalizedDateOfBirth = normalizeDateOfBirth(dateOfBirth);
 		const normalizedGenre = normalizeGenre(genre);
 		const normalizedDocumentNumber = normalizeDocumentNumber(documentNumber);
-		const normalizedProvinceId = Number.parseInt(String(provinceId), 10);
+		const hasProvinceId = provinceId !== undefined && provinceId !== null && provinceId !== '';
+		const normalizedProvinceId = hasProvinceId
+			? Number.parseInt(String(provinceId), 10)
+			: undefined;
 
-		if (!normalizedDateOfBirth) {
+		if (normalizedDateOfBirth === null) {
 			return res.status(400).json({ message: 'La fecha de nacimiento debe tener formato YYYY-MM-DD' });
 		}
 
-		if (!normalizedGenre) {
+		if (normalizedGenre === null) {
 			return res.status(400).json({ message: `El campo genre debe ser uno de: ${ALLOWED_GENRES.join(', ')}` });
 		}
 
-		if (!normalizedDocumentNumber) {
+		if (normalizedDocumentNumber === null) {
 			return res.status(400).json({ message: 'El número de documento debe contener solo dígitos' });
 		}
 
-		if (!Number.isInteger(normalizedProvinceId) || normalizedProvinceId < 1) {
+		if (hasProvinceId && (!Number.isInteger(normalizedProvinceId) || normalizedProvinceId < 1)) {
 			return res.status(400).json({ message: 'La provincia seleccionada no es válida' });
 		}
 
-		const provinceInstance = await model.Province.findByPk(normalizedProvinceId, {
-			attributes: ['id'],
-		});
+		if (hasProvinceId) {
+			const provinceInstance = await model.Province.findByPk(normalizedProvinceId, {
+				attributes: ['id'],
+			});
 
-		if (!provinceInstance) {
-			return res.status(400).json({ message: 'La provincia seleccionada no es válida' });
+			if (!provinceInstance) {
+				return res.status(400).json({ message: 'La provincia seleccionada no es válida' });
+			}
 		}
 
 		const now = new Date();
+		const optionalProfileData = {};
+
+		if (normalizedDateOfBirth !== undefined) {
+			optionalProfileData.dateOfBirth = normalizedDateOfBirth;
+			optionalProfileData.dateOfBirthLockedAt = now;
+		}
+
+		if (normalizedGenre !== undefined) {
+			optionalProfileData.genre = normalizedGenre;
+			optionalProfileData.genreLockedAt = now;
+		}
+
+		if (normalizedDocumentNumber !== undefined) {
+			optionalProfileData.documentNumber = normalizedDocumentNumber;
+			optionalProfileData.documentNumberLockedAt = now;
+		}
+
+		if (normalizedProvinceId !== undefined) {
+			optionalProfileData.provinceId = normalizedProvinceId;
+			optionalProfileData.provinceLockedAt = now;
+		}
 
 		const newUser = await model.User.create({
 			email,
 			firstName,
 			lastName,
 			password,
-			dateOfBirth: normalizedDateOfBirth,
-			genre: normalizedGenre,
-			documentNumber: normalizedDocumentNumber,
-			provinceId: normalizedProvinceId,
-			dateOfBirthLockedAt: now,
-			genreLockedAt: now,
-			documentNumberLockedAt: now,
-			provinceLockedAt: now,
+			...optionalProfileData,
 		});
 		console.log('created user')
 		// In dev mode, automatically verify email
