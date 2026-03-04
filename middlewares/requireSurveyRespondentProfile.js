@@ -1,4 +1,4 @@
-const REQUIRED_SURVEY_PROFILE_FIELDS = ['dateOfBirth', 'genre', 'documentNumber'];
+const REQUIRED_SURVEY_PROFILE_FIELDS = ['dateOfBirth', 'genre', 'documentNumber', 'provinceId'];
 
 export const getMissingSurveyProfileFields = (user) => {
   if (!user) {

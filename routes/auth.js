@@ -12,6 +12,7 @@ import msg from '../utils/messages.js';
 // initialize router
 const router = express.Router();
 const requiresAnonymous = [authenticate, requiresAnon];
+const ALLOWED_GENRES = ['masculino', 'femenino', 'no_binario', 'otro', 'prefiero_no_decir'];
 
 // -----------------------------------------------
 // BASE     /auth
@@ -37,6 +38,10 @@ router.post('/signup',
 		check('lastName').not().isEmpty().withMessage(msg.validationError.invalidValue),
 		check('password').not().isEmpty().isLength({ min: 6 }).withMessage(msg.validationError.invalidValue),
 		check('magicWord').not().isEmpty().isString().withMessage(msg.validationError.invalidValue),
+		check('dateOfBirth').not().isEmpty().isISO8601().withMessage(msg.validationError.date),
+		check('genre').not().isEmpty().isIn(ALLOWED_GENRES).withMessage(msg.validationError.invalidValue),
+		check('documentNumber').not().isEmpty().isString().withMessage(msg.validationError.invalidValue),
+		check('provinceId').isInt({ min: 1 }).withMessage(msg.validationError.integer),
 	], 
 	validate,
 	AuthController.register

@@ -54,6 +54,65 @@ const isSurveyActive = (survey) => {
     return new Date(survey.closedAt).getTime() > Date.now();
 };
 
+const ALLOWED_GENRES = ['masculino', 'femenino', 'no_binario', 'otro', 'prefiero_no_decir'];
+const REQUIRED_AUTH_SURVEY_PROFILE_FIELDS = ['dateOfBirth', 'genre', 'documentNumber', 'provinceId'];
+
+const normalizeDateOfBirth = (value) => {
+    if (typeof value !== 'string') {
+        return null;
+    }
+
+    const trimmedValue = value.trim();
+    if (!trimmedValue) {
+        return null;
+    }
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmedValue)) {
+        return null;
+    }
+
+    const asDate = new Date(trimmedValue);
+    if (Number.isNaN(asDate.getTime())) {
+        return null;
+    }
+
+    return trimmedValue;
+};
+
+const normalizeGenre = (value) => {
+    if (typeof value !== 'string') {
+        return null;
+    }
+
+    const normalized = value.trim().toLowerCase();
+    if (!normalized || !ALLOWED_GENRES.includes(normalized)) {
+        return null;
+    }
+
+    return normalized;
+};
+
+const normalizeProvinceId = async (value) => {
+    if (typeof value !== 'number' && typeof value !== 'string') {
+        return null;
+    }
+
+    const normalized = Number.parseInt(String(value), 10);
+    if (!Number.isInteger(normalized) || normalized < 1) {
+        return null;
+    }
+
+    const provinceInstance = await model.Province.findByPk(normalized, {
+        attributes: ['id'],
+    });
+
+    if (!provinceInstance) {
+        return null;
+    }
+
+    return normalized;
+};
+
 export const generateBaseSurvey = async (req, res) => {
     const { projectId } = req.params;
     const startedAt = Date.now();
@@ -921,6 +980,127 @@ export const getPublicAvailableSurveysByProjectSlug = async (req, res) => {
         });
     } catch (error) {
         console.error('Error fetching public available surveys:', error);
+        return res.status(500).json({ error: 'Internal server error' });
+    }
+}
+
+export const submitProjectSurveyResponse = async (req, res) => {
+    const { projectId, surveyId } = req.params;
+    const {
+        answers,
+        respondentData,
+        dateOfBirth,
+        genre,
+        provinceId,
+    } = req.body || {};
+
+    let transaction;
+
+    try {
+        const surveyInstance = await model.ProjectSurvey.findOne({
+            where: {
+                id: surveyId,
+                projectId,
+                ...getPublicAvailableSurveyWhereClause(),
+            },
+            attributes: ['id', 'allowAnonymousResponses'],
+        });
+
+        if (!surveyInstance) {
+            return res.status(404).json({ error: 'Survey not found or unavailable' });
+        }
+
+        let responseUserId = null;
+        let responseDateOfBirth = null;
+        let responseGenre = null;
+        let responseProvinceId = null;
+
+        if (req.user?.id) {
+            const userInstance = await model.User.findByPk(req.user.id, {
+                attributes: ['id', 'dateOfBirth', 'genre', 'documentNumber', 'provinceId'],
+            });
+
+            if (!userInstance) {
+                return res.status(401).json({ message: 'Authentication required' });
+            }
+
+            const missingFields = REQUIRED_AUTH_SURVEY_PROFILE_FIELDS.filter((fieldName) => !userInstance[fieldName]);
+            if (missingFields.length > 0) {
+                return res.status(422).json({
+                    message: 'Debe completar su perfil antes de responder encuestas',
+                    missingFields,
+                });
+            }
+
+            responseUserId = userInstance.id;
+            responseDateOfBirth = userInstance.dateOfBirth;
+            responseGenre = userInstance.genre;
+            responseProvinceId = userInstance.provinceId;
+        } else {
+            if (!surveyInstance.allowAnonymousResponses) {
+                return res.status(401).json({ message: 'Authentication required' });
+            }
+
+            const normalizedDateOfBirth = normalizeDateOfBirth(dateOfBirth);
+            const normalizedGenre = normalizeGenre(genre);
+            const normalizedProvinceId = await normalizeProvinceId(provinceId);
+            const errors = [];
+
+            if (!normalizedDateOfBirth) {
+                errors.push({ field: 'dateOfBirth', message: 'La fecha de nacimiento debe tener formato YYYY-MM-DD' });
+            }
+
+            if (!normalizedGenre) {
+                errors.push({ field: 'genre', message: `El campo genre debe ser uno de: ${ALLOWED_GENRES.join(', ')}` });
+            }
+
+            if (!normalizedProvinceId) {
+                errors.push({ field: 'provinceId', message: 'La provincia seleccionada no es válida' });
+            }
+
+            if (errors.length > 0) {
+                return res.status(400).json({
+                    message: 'No se pudo registrar la respuesta de la encuesta',
+                    errors,
+                });
+            }
+
+            responseDateOfBirth = normalizedDateOfBirth;
+            responseGenre = normalizedGenre;
+            responseProvinceId = normalizedProvinceId;
+        }
+
+        transaction = await model.sequelize.transaction();
+
+        const answerInstance = await model.ProjectSurveyAnswer.create({
+            projectSurveyId: surveyInstance.id,
+            respondentData: respondentData || null,
+            answers,
+            userId: responseUserId,
+            dateOfBirth: responseDateOfBirth,
+            genre: responseGenre,
+            provinceId: responseProvinceId,
+        }, {
+            transaction,
+        });
+
+        await model.ProjectSurvey.increment('responsesCount', {
+            by: 1,
+            where: { id: surveyInstance.id },
+            transaction,
+        });
+
+        await transaction.commit();
+
+        return res.status(201).json({
+            message: 'Survey response submitted successfully',
+            responseId: answerInstance.id,
+        });
+    } catch (error) {
+        if (transaction) {
+            await transaction.rollback();
+        }
+        console.error('Error submitting survey response:', error);
         return res.status(500).json({ error: 'Internal server error' });
     }
 }

@@ -3,6 +3,52 @@ import * as AuthHelper from '../helpers/authHelper.js';
 import dayjs from 'dayjs';
 import msg from '../utils/messages.js';
 
+const ALLOWED_GENRES = ['masculino', 'femenino', 'no_binario', 'otro', 'prefiero_no_decir'];
+
+const normalizeDateOfBirth = (value) => {
+	if (typeof value !== 'string') {
+		return null;
+	}
+
+	const trimmedValue = value.trim();
+	if (!trimmedValue || !/^\d{4}-\d{2}-\d{2}$/.test(trimmedValue)) {
+		return null;
+	}
+
+	const parsed = dayjs(trimmedValue);
+	if (!parsed.isValid()) {
+		return null;
+	}
+
+	return parsed.format('YYYY-MM-DD');
+};
+
+const normalizeGenre = (value) => {
+	if (typeof value !== 'string') {
+		return null;
+	}
+
+	const normalized = value.trim().toLowerCase();
+	if (!normalized || !ALLOWED_GENRES.includes(normalized)) {
+		return null;
+	}
+
+	return normalized;
+};
+
+const normalizeDocumentNumber = (value) => {
+	if (typeof value !== 'string' && typeof value !== 'number') {
+		return null;
+	}
+
+	const normalized = String(value).trim();
+	if (!/^\d+$/.test(normalized)) {
+		return null;
+	}
+
+	return normalized;
+};
+
 /**
  * It registers a new user
  * @route POST /auth/register
@@ -14,7 +60,17 @@ import msg from '../utils/messages.js';
 
 export const register = async (req, res) => {
   try {
-		const { email, firstName, lastName, password, magicWord } = req.body;
+		const {
+			email,
+			firstName,
+			lastName,
+			password,
+			magicWord,
+			dateOfBirth,
+			genre,
+			documentNumber,
+			provinceId,
+		} = req.body;
     console.log('got body')
 
 		// Make sure this account doesn't already exist
@@ -32,7 +88,51 @@ export const register = async (req, res) => {
 		}
 		console.log('magic word correct, creating user')
 
-		const newUser = await model.User.create({ email, firstName, lastName, password });
+		const normalizedDateOfBirth = normalizeDateOfBirth(dateOfBirth);
+		const normalizedGenre = normalizeGenre(genre);
+		const normalizedDocumentNumber = normalizeDocumentNumber(documentNumber);
+		const normalizedProvinceId = Number.parseInt(String(provinceId), 10);
+
+		if (!normalizedDateOfBirth) {
+			return res.status(400).json({ message: 'La fecha de nacimiento debe tener formato YYYY-MM-DD' });
+		}
+
+		if (!normalizedGenre) {
+			return res.status(400).json({ message: `El campo genre debe ser uno de: ${ALLOWED_GENRES.join(', ')}` });
+		}
+
+		if (!normalizedDocumentNumber) {
+			return res.status(400).json({ message: 'El número de documento debe contener solo dígitos' });
+		}
+
+		if (!Number.isInteger(normalizedProvinceId) || normalizedProvinceId < 1) {
+			return res.status(400).json({ message: 'La provincia seleccionada no es válida' });
+		}
+
+		const provinceInstance = await model.Province.findByPk(normalizedProvinceId, {
+			attributes: ['id'],
+		});
+
+		if (!provinceInstance) {
+			return res.status(400).json({ message: 'La provincia seleccionada no es válida' });
+		}
+
+		const now = new Date();
+
+		const newUser = await model.User.create({
+			email,
+			firstName,
+			lastName,
+			password,
+			dateOfBirth: normalizedDateOfBirth,
+			genre: normalizedGenre,
+			documentNumber: normalizedDocumentNumber,
+			provinceId: normalizedProvinceId,
+			dateOfBirthLockedAt: now,
+			genreLockedAt: now,
+			documentNumberLockedAt: now,
+			provinceLockedAt: now,
+		});
 		console.log('created user')
 		// In dev mode, automatically verify email
 		if(process.env.NODE_ENV === 'development') {

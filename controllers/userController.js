@@ -2,7 +2,7 @@ import model from '../models/index.js';
 import dayjs from 'dayjs';
 import msg from '../utils/messages.js';
 
-const ALLOWED_GENRES = ['male', 'female', 'non_binary', 'other', 'prefer_not_to_say'];
+const ALLOWED_GENRES = ['masculino', 'femenino', 'no_binario', 'otro', 'prefiero_no_decir'];
 
 const normalizeDateOfBirth = (value) => {
 	if (typeof value !== 'string') {
@@ -31,7 +31,7 @@ const normalizeGenre = (value) => {
 		return null;
 	}
 
-	const normalized = value.trim();
+	const normalized = value.trim().toLowerCase();
 	if (!normalized || !ALLOWED_GENRES.includes(normalized)) {
 		return null;
 	}
@@ -46,6 +46,27 @@ const normalizeDocumentNumber = (value) => {
 
 	const normalized = String(value).trim();
 	if (!/^\d+$/.test(normalized)) {
+		return null;
+	}
+
+	return normalized;
+};
+
+const normalizeProvinceId = async (value) => {
+	if (typeof value !== 'number' && typeof value !== 'string') {
+		return null;
+	}
+
+	const normalized = Number.parseInt(String(value), 10);
+	if (!Number.isInteger(normalized) || normalized < 1) {
+		return null;
+	}
+
+	const provinceInstance = await model.Province.findByPk(normalized, {
+		attributes: ['id'],
+	});
+
+	if (!provinceInstance) {
 		return null;
 	}
 
@@ -108,6 +129,13 @@ export const updateProfile = async (req, res) => {
 				normalize: normalizeDocumentNumber,
 				errorMessage: 'El número de documento debe contener solo dígitos',
 			},
+			{
+				key: 'provinceId',
+				label: 'provinceId',
+				lockKey: 'provinceLockedAt',
+				normalize: normalizeProvinceId,
+				errorMessage: 'La provincia seleccionada no es válida',
+			},
 		];
 
 		for (const fieldConfig of profileFields) {
@@ -115,7 +143,7 @@ export const updateProfile = async (req, res) => {
 				continue;
 			}
 
-			const normalizedValue = fieldConfig.normalize(payload[fieldConfig.key]);
+			const normalizedValue = await fieldConfig.normalize(payload[fieldConfig.key]);
 			if (!normalizedValue) {
 				errors.push({
 					field: fieldConfig.label,

@@ -15,6 +15,8 @@ router.get('/health', (req, res) => {
     res.status(200).json({ status: 'OK', message: 'Service is healthy' });
 });
 
+router.get('/provinces', utilsController.getProvinces);
+
 router.get('/check-opensearch', authenticate, authorize('admin'), utilsController.checkOpenSearch);
 
 export default router;

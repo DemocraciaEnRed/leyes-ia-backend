@@ -42,6 +42,11 @@ export default (sequelize, DataTypes) => {
         sourceKey: 'id',
         as: 'projectAiUsageEvents',
       });
+      User.belongsTo(models.Province, {
+        foreignKey: 'provinceId',
+        targetKey: 'id',
+        as: 'province',
+      });
     }
     comparePassword(password) {
       return bcrypt.compareSync(password, this.password);
@@ -97,7 +102,7 @@ export default (sequelize, DataTypes) => {
     }
 
     getUserSessionInfo() {
-      const hasSurveyProfile = Boolean(this.dateOfBirth && this.genre && this.documentNumber);
+      const hasSurveyProfile = Boolean(this.dateOfBirth && this.genre && this.documentNumber && this.provinceId);
 
       return {
         id: this.id,
@@ -110,11 +115,13 @@ export default (sequelize, DataTypes) => {
         dateOfBirth: this.dateOfBirth,
         genre: this.genre,
         documentNumber: this.documentNumber,
+        provinceId: this.provinceId,
         hasSurveyProfile,
         surveyProfileLocks: {
           dateOfBirthLockedAt: this.dateOfBirthLockedAt,
           genreLockedAt: this.genreLockedAt,
           documentNumberLockedAt: this.documentNumberLockedAt,
+          provinceLockedAt: this.provinceLockedAt,
         },
       }
     }
@@ -202,6 +209,14 @@ export default (sequelize, DataTypes) => {
       allowNull: true,
     },
     documentNumberLockedAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
+    provinceId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+    provinceLockedAt: {
       type: DataTypes.DATE,
       allowNull: true,
     },

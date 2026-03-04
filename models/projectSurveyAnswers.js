@@ -16,6 +16,16 @@ export default (sequelize, DataTypes) => {
         targetKey: 'id',
         as: 'projectSurvey',
       });
+      ProjectSurveyAnswer.belongsTo(models.User, {
+        foreignKey: 'userId',
+        targetKey: 'id',
+        as: 'user',
+      });
+      ProjectSurveyAnswer.belongsTo(models.Province, {
+        foreignKey: 'provinceId',
+        targetKey: 'id',
+        as: 'province',
+      });
 
     }
   }
@@ -30,6 +40,22 @@ export default (sequelize, DataTypes) => {
     },
     answers: {
       type: DataTypes.JSON,
+      allowNull: true
+    },
+    userId: {
+      type: DataTypes.INTEGER,
+      allowNull: true
+    },
+    dateOfBirth: {
+      type: DataTypes.DATEONLY,
+      allowNull: true
+    },
+    genre: {
+      type: DataTypes.STRING,
+      allowNull: true
+    },
+    provinceId: {
+      type: DataTypes.INTEGER,
       allowNull: true
     }
   }, {
