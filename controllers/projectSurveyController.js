@@ -38,6 +38,12 @@ const mapPublicSurvey = (survey) => ({
     updatedAt: survey.updatedAt
 });
 
+const mapPublicSurveyDetail = (survey) => ({
+    ...mapPublicSurvey(survey),
+    allowAnonymousResponses: Boolean(survey.allowAnonymousResponses),
+    questions: Array.isArray(survey.questions) ? survey.questions : [],
+});
+
 const isSurveyActive = (survey) => {
     if (!survey) {
         return false;
@@ -92,6 +98,19 @@ const normalizeGenre = (value) => {
     return normalized;
 };
 
+const normalizeDocumentNumber = (value) => {
+    if (typeof value !== 'string' && typeof value !== 'number') {
+        return null;
+    }
+
+    const normalized = String(value).trim();
+    if (!/^\d+$/.test(normalized)) {
+        return null;
+    }
+
+    return normalized;
+};
+
 const normalizeProvinceId = async (value) => {
     if (typeof value !== 'number' && typeof value !== 'string') {
         return null;
@@ -111,6 +130,174 @@ const normalizeProvinceId = async (value) => {
     }
 
     return normalized;
+};
+
+const getNormalizedQuestionType = (questionType) => {
+    if (typeof questionType !== 'string') {
+        return 'open-ended';
+    }
+
+    const normalizedType = questionType.trim().toLowerCase();
+
+    if (normalizedType === 'single-choice' || normalizedType === 'multiple-choice' || normalizedType === 'rating' || normalizedType === 'open-ended') {
+        return normalizedType;
+    }
+
+    if (normalizedType === 'texto') {
+        return 'open-ended';
+    }
+
+    return 'open-ended';
+};
+
+const extractRawAnswerPayload = (rawAnswers, question, index) => {
+    if (!rawAnswers || typeof rawAnswers !== 'object' || Array.isArray(rawAnswers)) {
+        return undefined;
+    }
+
+    const answerKeys = [];
+    if (question?.id !== undefined && question?.id !== null) {
+        answerKeys.push(String(question.id));
+    }
+    answerKeys.push(String(index + 1));
+
+    for (const key of answerKeys) {
+        if (Object.prototype.hasOwnProperty.call(rawAnswers, key)) {
+            return rawAnswers[key];
+        }
+    }
+
+    return undefined;
+};
+
+const normalizeAndValidateSurveyAnswers = (surveyQuestions, rawAnswers) => {
+    if (!Array.isArray(surveyQuestions) || surveyQuestions.length === 0) {
+        return {
+            errors: [],
+            normalizedAnswers: rawAnswers,
+        };
+    }
+
+    if (!rawAnswers || typeof rawAnswers !== 'object' || Array.isArray(rawAnswers)) {
+        return {
+            errors: [{ field: 'answers', message: 'Las respuestas de la encuesta tienen un formato inválido' }],
+            normalizedAnswers: null,
+        };
+    }
+
+    const errors = [];
+    const normalizedAnswers = {};
+    const knownKeys = new Set();
+
+    surveyQuestions.forEach((question, index) => {
+        const questionKey = String((question?.id !== undefined && question?.id !== null) ? question.id : (index + 1));
+        knownKeys.add(questionKey);
+        knownKeys.add(String(index + 1));
+
+        const rawAnswer = extractRawAnswerPayload(rawAnswers, question, index);
+        const isRequired = Boolean(question?.required);
+        const questionType = getNormalizedQuestionType(question?.type);
+        const expectedOptions = Array.isArray(question?.options)
+            ? question.options.filter((option) => typeof option === 'string' && option.trim().length > 0)
+            : [];
+
+        if (rawAnswer === undefined || rawAnswer === null || rawAnswer === '') {
+            if (isRequired) {
+                errors.push({ field: `answers.${questionKey}`, message: 'La pregunta obligatoria no fue respondida' });
+            }
+            return;
+        }
+
+        const answerValue = (rawAnswer && typeof rawAnswer === 'object' && !Array.isArray(rawAnswer) && Object.prototype.hasOwnProperty.call(rawAnswer, 'value'))
+            ? rawAnswer.value
+            : rawAnswer;
+        const answerOpenText = (rawAnswer && typeof rawAnswer === 'object' && !Array.isArray(rawAnswer) && typeof rawAnswer.openText === 'string')
+            ? rawAnswer.openText.trim()
+            : undefined;
+
+        if (questionType === 'single-choice') {
+            if (typeof answerValue !== 'string' || !answerValue.trim()) {
+                errors.push({ field: `answers.${questionKey}`, message: 'La respuesta debe ser una opción válida' });
+                return;
+            }
+
+            if (expectedOptions.length > 0 && !expectedOptions.includes(answerValue)) {
+                errors.push({ field: `answers.${questionKey}`, message: 'La opción seleccionada no es válida para esta pregunta' });
+                return;
+            }
+
+            normalizedAnswers[questionKey] = {
+                value: answerValue,
+                ...(answerOpenText ? { openText: answerOpenText } : {}),
+            };
+            return;
+        }
+
+        if (questionType === 'multiple-choice') {
+            if (!Array.isArray(answerValue)) {
+                errors.push({ field: `answers.${questionKey}`, message: 'La respuesta debe incluir una lista de opciones' });
+                return;
+            }
+
+            const normalizedValues = answerValue
+                .filter((value) => typeof value === 'string' && value.trim().length > 0)
+                .map((value) => value.trim());
+
+            if (isRequired && normalizedValues.length === 0) {
+                errors.push({ field: `answers.${questionKey}`, message: 'Debe seleccionar al menos una opción' });
+                return;
+            }
+
+            if (expectedOptions.length > 0 && normalizedValues.some((value) => !expectedOptions.includes(value))) {
+                errors.push({ field: `answers.${questionKey}`, message: 'Una o más opciones seleccionadas no son válidas' });
+                return;
+            }
+
+            normalizedAnswers[questionKey] = {
+                value: normalizedValues,
+                ...(answerOpenText ? { openText: answerOpenText } : {}),
+            };
+            return;
+        }
+
+        if (questionType === 'rating') {
+            const parsedValue = Number.parseInt(String(answerValue), 10);
+            const maxScale = Number.isInteger(Number(question?.scale)) && Number(question.scale) > 1
+                ? Number(question.scale)
+                : 5;
+
+            if (!Number.isInteger(parsedValue) || parsedValue < 1 || parsedValue > maxScale) {
+                errors.push({ field: `answers.${questionKey}`, message: `La calificación debe estar entre 1 y ${maxScale}` });
+                return;
+            }
+
+            normalizedAnswers[questionKey] = {
+                value: parsedValue,
+                ...(answerOpenText ? { openText: answerOpenText } : {}),
+            };
+            return;
+        }
+
+        if (typeof answerValue !== 'string' || !answerValue.trim()) {
+            errors.push({ field: `answers.${questionKey}`, message: 'La respuesta de texto no es válida' });
+            return;
+        }
+
+        normalizedAnswers[questionKey] = {
+            value: answerValue.trim(),
+        };
+    });
+
+    const rawAnswerKeys = Object.keys(rawAnswers);
+    const unknownKeys = rawAnswerKeys.filter((key) => !knownKeys.has(String(key)));
+    if (unknownKeys.length > 0) {
+        errors.push({ field: 'answers', message: 'Se enviaron respuestas para preguntas inexistentes' });
+    }
+
+    return {
+        errors,
+        normalizedAnswers,
+    };
 };
 
 export const generateBaseSurvey = async (req, res) => {
@@ -984,6 +1171,150 @@ export const getPublicAvailableSurveysByProjectSlug = async (req, res) => {
     }
 }
 
+export const getPublicSurveyByProjectSlugAndSurveyId = async (req, res) => {
+    const { projectSlug, surveyId } = req.params;
+
+    try {
+        const projectInstance = await model.Project.findOne({
+            where: publicProjectWhereClause(projectSlug),
+            attributes: ['id', 'slug', 'featuredSurveyId']
+        });
+
+        if (!projectInstance) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        const surveyInstance = await model.ProjectSurvey.findOne({
+            where: {
+                id: surveyId,
+                projectId: projectInstance.id,
+                ...getPublicAvailableSurveyWhereClause()
+            },
+            attributes: [
+                'id',
+                'projectId',
+                'title',
+                'about',
+                'type',
+                'welcomeTitle',
+                'welcomeDescription',
+                'allowAnonymousResponses',
+                'questions',
+                'responsesCount',
+                'closedAt',
+                'createdAt',
+                'updatedAt',
+            ]
+        });
+
+        if (!surveyInstance) {
+            return res.status(404).json({
+                code: 'SURVEY_UNAVAILABLE',
+                message: 'Survey not found or unavailable',
+            });
+        }
+
+        return res.status(200).json({
+            survey: {
+                ...mapPublicSurveyDetail(surveyInstance),
+                isFeatured: projectInstance.featuredSurveyId === surveyInstance.id,
+                respondentRequiredFields: REQUIRED_AUTH_SURVEY_PROFILE_FIELDS,
+            },
+        });
+    } catch (error) {
+        console.error('Error fetching public survey by slug and surveyId:', error);
+        return res.status(500).json({ error: 'Internal server error' });
+    }
+}
+
+export const getPublicSurveyRespondentEligibilityByProjectSlugAndSurveyId = async (req, res) => {
+    const { projectSlug, surveyId } = req.params;
+
+    try {
+        const projectInstance = await model.Project.findOne({
+            where: publicProjectWhereClause(projectSlug),
+            attributes: ['id']
+        });
+
+        if (!projectInstance) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        const surveyInstance = await model.ProjectSurvey.findOne({
+            where: {
+                id: surveyId,
+                projectId: projectInstance.id,
+                ...getPublicAvailableSurveyWhereClause()
+            },
+            attributes: ['id', 'projectId', 'allowAnonymousResponses']
+        });
+
+        if (!surveyInstance) {
+            return res.status(404).json({ error: 'Survey not found or unavailable' });
+        }
+
+        if (req.user?.id) {
+            const existingAnswer = await model.ProjectSurveyAnswer.findOne({
+                where: {
+                    projectSurveyId: surveyInstance.id,
+                    userId: req.user.id,
+                },
+                attributes: ['id'],
+            });
+
+            if (existingAnswer) {
+                return res.status(200).json({
+                    projectId: surveyInstance.projectId,
+                    surveyId: surveyInstance.id,
+                    mode: 'authenticated',
+                    eligible: false,
+                    hasResponded: true,
+                    code: 'ALREADY_RESPONDED',
+                    allowAnonymousResponses: Boolean(surveyInstance.allowAnonymousResponses),
+                    requiredFields: REQUIRED_AUTH_SURVEY_PROFILE_FIELDS,
+                    missingFields: [],
+                    message: 'Ya registraste una respuesta para esta encuesta',
+                });
+            }
+
+            const missingFields = REQUIRED_AUTH_SURVEY_PROFILE_FIELDS.filter((fieldName) => !req.user[fieldName]);
+
+            return res.status(200).json({
+                projectId: surveyInstance.projectId,
+                surveyId: surveyInstance.id,
+                mode: 'authenticated',
+                eligible: missingFields.length === 0,
+                hasResponded: false,
+                allowAnonymousResponses: Boolean(surveyInstance.allowAnonymousResponses),
+                requiredFields: REQUIRED_AUTH_SURVEY_PROFILE_FIELDS,
+                missingFields,
+                message: missingFields.length > 0
+                    ? 'Debe completar su perfil antes de responder encuestas'
+                    : 'Perfil completo para responder encuestas',
+            });
+        }
+
+        const canRespondAnonymously = Boolean(surveyInstance.allowAnonymousResponses);
+
+        return res.status(200).json({
+            projectId: surveyInstance.projectId,
+            surveyId: surveyInstance.id,
+            mode: 'anonymous',
+            eligible: canRespondAnonymously,
+            hasResponded: false,
+            allowAnonymousResponses: canRespondAnonymously,
+            requiredFields: REQUIRED_AUTH_SURVEY_PROFILE_FIELDS,
+            missingFields: canRespondAnonymously ? [] : REQUIRED_AUTH_SURVEY_PROFILE_FIELDS,
+            message: canRespondAnonymously
+                ? 'Puede responder de forma anónima completando los datos requeridos'
+                : 'Debe iniciar sesión para responder esta encuesta',
+        });
+    } catch (error) {
+        console.error('Error checking public survey respondent eligibility:', error);
+        return res.status(500).json({ error: 'Internal server error' });
+    }
+}
+
 export const submitProjectSurveyResponse = async (req, res) => {
     const { projectId, surveyId } = req.params;
     const {
@@ -991,6 +1322,7 @@ export const submitProjectSurveyResponse = async (req, res) => {
         respondentData,
         dateOfBirth,
         genre,
+        documentNumber,
         provinceId,
     } = req.body || {};
 
@@ -1003,7 +1335,7 @@ export const submitProjectSurveyResponse = async (req, res) => {
                 projectId,
                 ...getPublicAvailableSurveyWhereClause(),
             },
-            attributes: ['id', 'allowAnonymousResponses'],
+            attributes: ['id', 'allowAnonymousResponses', 'questions'],
         });
 
         if (!surveyInstance) {
@@ -1014,6 +1346,7 @@ export const submitProjectSurveyResponse = async (req, res) => {
         let responseDateOfBirth = null;
         let responseGenre = null;
         let responseProvinceId = null;
+        let responseDocumentNumber = null;
 
         if (req.user?.id) {
             const userInstance = await model.User.findByPk(req.user.id, {
@@ -1021,12 +1354,16 @@ export const submitProjectSurveyResponse = async (req, res) => {
             });
 
             if (!userInstance) {
-                return res.status(401).json({ message: 'Authentication required' });
+                return res.status(401).json({
+                    code: 'AUTH_REQUIRED',
+                    message: 'Authentication required',
+                });
             }
 
             const missingFields = REQUIRED_AUTH_SURVEY_PROFILE_FIELDS.filter((fieldName) => !userInstance[fieldName]);
             if (missingFields.length > 0) {
                 return res.status(422).json({
+                    code: 'PROFILE_INCOMPLETE',
                     message: 'Debe completar su perfil antes de responder encuestas',
                     missingFields,
                 });
@@ -1036,13 +1373,33 @@ export const submitProjectSurveyResponse = async (req, res) => {
             responseDateOfBirth = userInstance.dateOfBirth;
             responseGenre = userInstance.genre;
             responseProvinceId = userInstance.provinceId;
+            responseDocumentNumber = userInstance.documentNumber;
+
+            const existingAnswer = await model.ProjectSurveyAnswer.findOne({
+                where: {
+                    projectSurveyId: surveyInstance.id,
+                    userId: responseUserId,
+                },
+                attributes: ['id'],
+            });
+
+            if (existingAnswer) {
+                return res.status(409).json({
+                    code: 'DUPLICATE_RESPONSE_USER',
+                    message: 'Ya registraste una respuesta para esta encuesta',
+                });
+            }
         } else {
             if (!surveyInstance.allowAnonymousResponses) {
-                return res.status(401).json({ message: 'Authentication required' });
+                return res.status(401).json({
+                    code: 'AUTH_REQUIRED',
+                    message: 'Authentication required',
+                });
             }
 
             const normalizedDateOfBirth = normalizeDateOfBirth(dateOfBirth);
             const normalizedGenre = normalizeGenre(genre);
+            const normalizedDocumentNumber = normalizeDocumentNumber(documentNumber);
             const normalizedProvinceId = await normalizeProvinceId(provinceId);
             const errors = [];
 
@@ -1054,12 +1411,17 @@ export const submitProjectSurveyResponse = async (req, res) => {
                 errors.push({ field: 'genre', message: `El campo genre debe ser uno de: ${ALLOWED_GENRES.join(', ')}` });
             }
 
+            if (!normalizedDocumentNumber) {
+                errors.push({ field: 'documentNumber', message: 'El número de documento debe contener solo dígitos' });
+            }
+
             if (!normalizedProvinceId) {
                 errors.push({ field: 'provinceId', message: 'La provincia seleccionada no es válida' });
             }
 
             if (errors.length > 0) {
                 return res.status(400).json({
+                    code: 'INVALID_RESPONDENT_DATA',
                     message: 'No se pudo registrar la respuesta de la encuesta',
                     errors,
                 });
@@ -1068,18 +1430,54 @@ export const submitProjectSurveyResponse = async (req, res) => {
             responseDateOfBirth = normalizedDateOfBirth;
             responseGenre = normalizedGenre;
             responseProvinceId = normalizedProvinceId;
+            responseDocumentNumber = normalizedDocumentNumber;
+
+            const existingAnonymousAnswer = await model.ProjectSurveyAnswer.findOne({
+                where: {
+                    projectSurveyId: surveyInstance.id,
+                    userId: null,
+                    documentNumber: responseDocumentNumber,
+                },
+                attributes: ['id'],
+            });
+
+            if (existingAnonymousAnswer) {
+                return res.status(409).json({
+                    code: 'DUPLICATE_RESPONSE_DOCUMENT',
+                    message: 'Ya existe una respuesta registrada con ese número de documento para esta encuesta',
+                });
+            }
+        }
+
+        const { errors: answerValidationErrors, normalizedAnswers } = normalizeAndValidateSurveyAnswers(
+            surveyInstance.questions,
+            answers,
+        );
+
+        if (answerValidationErrors.length > 0) {
+            return res.status(400).json({
+                code: 'INVALID_ANSWERS',
+                message: 'No se pudo registrar la respuesta de la encuesta',
+                errors: answerValidationErrors,
+            });
         }
 
         transaction = await model.sequelize.transaction();
 
         const answerInstance = await model.ProjectSurveyAnswer.create({
             projectSurveyId: surveyInstance.id,
-            respondentData: respondentData || null,
-            answers,
+            respondentData: req.user?.id
+                ? (respondentData || null)
+                : {
+                    ...(respondentData && typeof respondentData === 'object' ? respondentData : {}),
+                    documentNumber: responseDocumentNumber,
+                },
+            answers: normalizedAnswers,
             userId: responseUserId,
             dateOfBirth: responseDateOfBirth,
             genre: responseGenre,
             provinceId: responseProvinceId,
+            documentNumber: responseDocumentNumber,
         }, {
             transaction,
         });

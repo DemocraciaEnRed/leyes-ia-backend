@@ -60,6 +60,11 @@ Configuration files live under the `config/` folder. Common env vars used by the
 
 See `routes/` for available endpoints. This README will later include sample requests for the main endpoints (projects, knowledge bases, agents, surveys, uploads).
 
+Survey runtime contract (public structure, eligibility, submit payload and error codes):
+
+- `docs/SURVEY_RUNTIME_CONTRACT.md`
+- `docs/SURVEY_QA_CHECKLIST.md`
+
 ### API segmentation (Hub vs Management)
 
 The API is now split by usage context:

@@ -57,6 +57,10 @@ export default (sequelize, DataTypes) => {
     provinceId: {
       type: DataTypes.INTEGER,
       allowNull: true
+    },
+    documentNumber: {
+      type: DataTypes.STRING,
+      allowNull: true
     }
   }, {
     sequelize,
