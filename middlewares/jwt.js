@@ -23,9 +23,11 @@ const configureJwt = passport => {
 					'dateOfBirth',
 					'genre',
 					'documentNumber',
+					'provinceId',
 					'dateOfBirthLockedAt',
 					'genreLockedAt',
 					'documentNumberLockedAt',
+					'provinceLockedAt',
 				],
 				where: {
 					id: jwt_payload.id
