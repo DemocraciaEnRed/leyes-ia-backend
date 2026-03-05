@@ -27,7 +27,11 @@ Base: `/projects/:projectId/surveys`
 
 - `POST /:surveyId/responses`
   - Soporta envío logueado o anónimo.
-  - Requiere `answers` (objeto).
+  - Requiere `answers` (array).
+  - Cada item debe incluir:
+    - `questionIndex` (entero, basado en posición del `questions[]` del survey)
+    - `value` (según tipo de pregunta)
+    - `openText` (opcional)
   - Para anónimo requiere además:
     - `dateOfBirth` (`YYYY-MM-DD`)
     - `genre` (enum español)
@@ -45,6 +49,7 @@ Base: `/projects/:projectId/surveys`
    - Solo permitido si `allowAnonymousResponses = true`.
    - Se bloquea más de una respuesta por encuesta + DNI (`projectSurveyId + documentNumber`, con `userId = null`).
 4. `answers` se valida contra el schema de preguntas de la encuesta:
+  - `questionIndex` debe existir y no repetirse.
    - `single-choice`: opción válida.
    - `multiple-choice`: arreglo de opciones válidas.
    - `rating`: entero en rango `1..scale` (default 5).

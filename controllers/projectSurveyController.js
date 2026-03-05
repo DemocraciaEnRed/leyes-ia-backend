@@ -150,26 +150,6 @@ const getNormalizedQuestionType = (questionType) => {
     return 'open-ended';
 };
 
-const extractRawAnswerPayload = (rawAnswers, question, index) => {
-    if (!rawAnswers || typeof rawAnswers !== 'object' || Array.isArray(rawAnswers)) {
-        return undefined;
-    }
-
-    const answerKeys = [];
-    if (question?.id !== undefined && question?.id !== null) {
-        answerKeys.push(String(question.id));
-    }
-    answerKeys.push(String(index + 1));
-
-    for (const key of answerKeys) {
-        if (Object.prototype.hasOwnProperty.call(rawAnswers, key)) {
-            return rawAnswers[key];
-        }
-    }
-
-    return undefined;
-};
-
 const normalizeAndValidateSurveyAnswers = (surveyQuestions, rawAnswers) => {
     if (!Array.isArray(surveyQuestions) || surveyQuestions.length === 0) {
         return {
@@ -178,7 +158,7 @@ const normalizeAndValidateSurveyAnswers = (surveyQuestions, rawAnswers) => {
         };
     }
 
-    if (!rawAnswers || typeof rawAnswers !== 'object' || Array.isArray(rawAnswers)) {
+    if (!Array.isArray(rawAnswers)) {
         return {
             errors: [{ field: 'answers', message: 'Las respuestas de la encuesta tienen un formato inválido' }],
             normalizedAnswers: null,
@@ -186,15 +166,31 @@ const normalizeAndValidateSurveyAnswers = (surveyQuestions, rawAnswers) => {
     }
 
     const errors = [];
-    const normalizedAnswers = {};
-    const knownKeys = new Set();
+    const normalizedAnswers = [];
+    const answersByQuestionIndex = new Map();
+
+    rawAnswers.forEach((rawItem, itemIndex) => {
+        if (!rawItem || typeof rawItem !== 'object' || Array.isArray(rawItem)) {
+            errors.push({ field: `answers.${itemIndex}`, message: 'El item de respuesta tiene un formato inválido' });
+            return;
+        }
+
+        const questionIndex = Number.parseInt(String(rawItem.questionIndex), 10);
+        if (!Number.isInteger(questionIndex) || questionIndex < 0 || questionIndex >= surveyQuestions.length) {
+            errors.push({ field: `answers.${itemIndex}.questionIndex`, message: 'El índice de pregunta es inválido' });
+            return;
+        }
+
+        if (answersByQuestionIndex.has(questionIndex)) {
+            errors.push({ field: `answers.${itemIndex}.questionIndex`, message: 'La pregunta fue respondida más de una vez' });
+            return;
+        }
+
+        answersByQuestionIndex.set(questionIndex, rawItem);
+    });
 
     surveyQuestions.forEach((question, index) => {
-        const questionKey = String((question?.id !== undefined && question?.id !== null) ? question.id : (index + 1));
-        knownKeys.add(questionKey);
-        knownKeys.add(String(index + 1));
-
-        const rawAnswer = extractRawAnswerPayload(rawAnswers, question, index);
+        const rawAnswer = answersByQuestionIndex.get(index);
         const isRequired = Boolean(question?.required);
         const questionType = getNormalizedQuestionType(question?.type);
         const expectedOptions = Array.isArray(question?.options)
@@ -203,7 +199,7 @@ const normalizeAndValidateSurveyAnswers = (surveyQuestions, rawAnswers) => {
 
         if (rawAnswer === undefined || rawAnswer === null || rawAnswer === '') {
             if (isRequired) {
-                errors.push({ field: `answers.${questionKey}`, message: 'La pregunta obligatoria no fue respondida' });
+                errors.push({ field: `answers.questionIndex.${index}`, message: 'La pregunta obligatoria no fue respondida' });
             }
             return;
         }
@@ -217,25 +213,26 @@ const normalizeAndValidateSurveyAnswers = (surveyQuestions, rawAnswers) => {
 
         if (questionType === 'single-choice') {
             if (typeof answerValue !== 'string' || !answerValue.trim()) {
-                errors.push({ field: `answers.${questionKey}`, message: 'La respuesta debe ser una opción válida' });
+                errors.push({ field: `answers.questionIndex.${index}`, message: 'La respuesta debe ser una opción válida' });
                 return;
             }
 
             if (expectedOptions.length > 0 && !expectedOptions.includes(answerValue)) {
-                errors.push({ field: `answers.${questionKey}`, message: 'La opción seleccionada no es válida para esta pregunta' });
+                errors.push({ field: `answers.questionIndex.${index}`, message: 'La opción seleccionada no es válida para esta pregunta' });
                 return;
             }
 
-            normalizedAnswers[questionKey] = {
+            normalizedAnswers.push({
+                questionIndex: index,
                 value: answerValue,
                 ...(answerOpenText ? { openText: answerOpenText } : {}),
-            };
+            });
             return;
         }
 
         if (questionType === 'multiple-choice') {
             if (!Array.isArray(answerValue)) {
-                errors.push({ field: `answers.${questionKey}`, message: 'La respuesta debe incluir una lista de opciones' });
+                errors.push({ field: `answers.questionIndex.${index}`, message: 'La respuesta debe incluir una lista de opciones' });
                 return;
             }
 
@@ -244,19 +241,20 @@ const normalizeAndValidateSurveyAnswers = (surveyQuestions, rawAnswers) => {
                 .map((value) => value.trim());
 
             if (isRequired && normalizedValues.length === 0) {
-                errors.push({ field: `answers.${questionKey}`, message: 'Debe seleccionar al menos una opción' });
+                errors.push({ field: `answers.questionIndex.${index}`, message: 'Debe seleccionar al menos una opción' });
                 return;
             }
 
             if (expectedOptions.length > 0 && normalizedValues.some((value) => !expectedOptions.includes(value))) {
-                errors.push({ field: `answers.${questionKey}`, message: 'Una o más opciones seleccionadas no son válidas' });
+                errors.push({ field: `answers.questionIndex.${index}`, message: 'Una o más opciones seleccionadas no son válidas' });
                 return;
             }
 
-            normalizedAnswers[questionKey] = {
+            normalizedAnswers.push({
+                questionIndex: index,
                 value: normalizedValues,
                 ...(answerOpenText ? { openText: answerOpenText } : {}),
-            };
+            });
             return;
         }
 
@@ -267,32 +265,30 @@ const normalizeAndValidateSurveyAnswers = (surveyQuestions, rawAnswers) => {
                 : 5;
 
             if (!Number.isInteger(parsedValue) || parsedValue < 1 || parsedValue > maxScale) {
-                errors.push({ field: `answers.${questionKey}`, message: `La calificación debe estar entre 1 y ${maxScale}` });
+                errors.push({ field: `answers.questionIndex.${index}`, message: `La calificación debe estar entre 1 y ${maxScale}` });
                 return;
             }
 
-            normalizedAnswers[questionKey] = {
+            normalizedAnswers.push({
+                questionIndex: index,
                 value: parsedValue,
                 ...(answerOpenText ? { openText: answerOpenText } : {}),
-            };
+            });
             return;
         }
 
         if (typeof answerValue !== 'string' || !answerValue.trim()) {
-            errors.push({ field: `answers.${questionKey}`, message: 'La respuesta de texto no es válida' });
+            errors.push({ field: `answers.questionIndex.${index}`, message: 'La respuesta de texto no es válida' });
             return;
         }
 
-        normalizedAnswers[questionKey] = {
+        normalizedAnswers.push({
+            questionIndex: index,
             value: answerValue.trim(),
-        };
+        });
     });
 
-    const rawAnswerKeys = Object.keys(rawAnswers);
-    const unknownKeys = rawAnswerKeys.filter((key) => !knownKeys.has(String(key)));
-    if (unknownKeys.length > 0) {
-        errors.push({ field: 'answers', message: 'Se enviaron respuestas para preguntas inexistentes' });
-    }
+    normalizedAnswers.sort((a, b) => a.questionIndex - b.questionIndex);
 
     return {
         errors,

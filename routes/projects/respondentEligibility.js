@@ -26,9 +26,7 @@ router.post(
   [
     check('projectId').isInt({ min: 1 }).withMessage(msg.validationError.integer),
     check('surveyId').isInt({ min: 1 }).withMessage(msg.validationError.integer),
-    check('answers').custom((value) => {
-      return value !== undefined && value !== null && typeof value === 'object' && !Array.isArray(value);
-    }).withMessage(msg.validationError.invalidValue),
+    check('answers').isArray({ min: 0 }).withMessage(msg.validationError.invalidValue),
     check('respondentData').optional({ nullable: true }).isObject().withMessage(msg.validationError.invalidValue),
     check('dateOfBirth').optional({ nullable: true }).isISO8601().withMessage(msg.validationError.date),
     check('genre').optional({ nullable: true }).isString().withMessage(msg.validationError.string),
