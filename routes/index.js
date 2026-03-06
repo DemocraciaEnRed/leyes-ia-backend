@@ -7,6 +7,7 @@ import testRoutes from './test.js';
 import authRoutes from './auth.js';
 import adminRoutes from './admin.js';
 import usersRoutes from './users.js';
+import demoRoutes from './demo.js';
 import authenticate from '../middlewares/authenticate.js';
 import authorize from '../middlewares/authorize.js';
 
@@ -24,6 +25,7 @@ export default function routes(app) {
 	app.use('/projects', projectsRoutes);
 	app.use('/admin', adminRoutes);
 	app.use('/utils', utilsRoutes);
+	app.use('/demo', demoRoutes);
 
 	if (process.env.NODE_ENV !== 'production') {
 		app.use('/test', testRoutes);
