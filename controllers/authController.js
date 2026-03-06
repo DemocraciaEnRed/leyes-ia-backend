@@ -44,23 +44,6 @@ const normalizeGenre = (value) => {
 	return normalized;
 };
 
-const normalizeDocumentNumber = (value) => {
-	if (value === undefined || value === null || value === '') {
-		return undefined;
-	}
-
-	if (typeof value !== 'string' && typeof value !== 'number') {
-		return null;
-	}
-
-	const normalized = String(value).trim();
-	if (!/^\d+$/.test(normalized)) {
-		return null;
-	}
-
-	return normalized;
-};
-
 /**
  * It registers a new user
  * @route POST /auth/register
@@ -79,7 +62,6 @@ export const register = async (req, res) => {
 			password,
 			dateOfBirth,
 			genre,
-			documentNumber,
 			provinceId,
 		} = req.body;
     console.log('got body')
@@ -95,7 +77,6 @@ export const register = async (req, res) => {
 
 		const normalizedDateOfBirth = normalizeDateOfBirth(dateOfBirth);
 		const normalizedGenre = normalizeGenre(genre);
-		const normalizedDocumentNumber = normalizeDocumentNumber(documentNumber);
 		const hasProvinceId = provinceId !== undefined && provinceId !== null && provinceId !== '';
 		const normalizedProvinceId = hasProvinceId
 			? Number.parseInt(String(provinceId), 10)
@@ -107,10 +88,6 @@ export const register = async (req, res) => {
 
 		if (normalizedGenre === null) {
 			return res.status(400).json({ message: `El campo genre debe ser uno de: ${ALLOWED_GENRES.join(', ')}` });
-		}
-
-		if (normalizedDocumentNumber === null) {
-			return res.status(400).json({ message: 'El número de documento debe contener solo dígitos' });
 		}
 
 		if (hasProvinceId && (!Number.isInteger(normalizedProvinceId) || normalizedProvinceId < 1)) {
@@ -138,11 +115,6 @@ export const register = async (req, res) => {
 		if (normalizedGenre !== undefined) {
 			optionalProfileData.genre = normalizedGenre;
 			optionalProfileData.genreLockedAt = now;
-		}
-
-		if (normalizedDocumentNumber !== undefined) {
-			optionalProfileData.documentNumber = normalizedDocumentNumber;
-			optionalProfileData.documentNumberLockedAt = now;
 		}
 
 		if (normalizedProvinceId !== undefined) {

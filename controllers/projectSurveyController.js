@@ -61,8 +61,10 @@ const isSurveyActive = (survey) => {
 };
 
 const ALLOWED_GENRES = ['masculino', 'femenino', 'no_binario', 'otro', 'prefiero_no_decir'];
-const REQUIRED_AUTH_SURVEY_PROFILE_FIELDS = ['dateOfBirth', 'genre', 'documentNumber', 'provinceId'];
+const REQUIRED_AUTH_SURVEY_PROFILE_FIELDS = ['dateOfBirth', 'genre', 'provinceId'];
+const REQUIRED_ANON_SURVEY_FIELDS = ['age', 'genre', 'provinceId'];
 const MIN_PUBLIC_DEMOGRAPHIC_COUNT = 1;
+const MIN_RESPONDENT_AGE = 14;
 
 const GENRE_LABELS = {
     masculino: 'Masculino',
@@ -143,6 +145,19 @@ const resolveRespondentAge = (dateOfBirth) => {
     }
 
     return age;
+};
+
+const normalizeAge = (value, { min = MIN_RESPONDENT_AGE, max = 120 } = {}) => {
+    if (typeof value !== 'number' && typeof value !== 'string') {
+        return null;
+    }
+
+    const normalized = Number.parseInt(String(value), 10);
+    if (!Number.isInteger(normalized) || normalized < min || normalized > max) {
+        return null;
+    }
+
+    return normalized;
 };
 
 const applyPrivacyThresholdToDistribution = ({
@@ -383,7 +398,7 @@ const buildDemographicsResults = async (answerInstances) => {
             genreCounts.set(genreKey, (genreCounts.get(genreKey) || 0) + 1);
         }
 
-        const age = resolveRespondentAge(instance.dateOfBirth);
+        const age = normalizeAge(instance.age, { min: 0 });
         if (age !== null) {
             const bucket = AGE_RANGE_BUCKETS.find((item) => age >= item.min && age <= item.max);
             if (bucket) {
@@ -481,19 +496,6 @@ const normalizeGenre = (value) => {
 
     const normalized = value.trim().toLowerCase();
     if (!normalized || !ALLOWED_GENRES.includes(normalized)) {
-        return null;
-    }
-
-    return normalized;
-};
-
-const normalizeDocumentNumber = (value) => {
-    if (typeof value !== 'string' && typeof value !== 'number') {
-        return null;
-    }
-
-    const normalized = String(value).trim();
-    if (!/^\d+$/.test(normalized)) {
         return null;
     }
 
@@ -1603,7 +1605,7 @@ export const getPublicSurveyByProjectSlugAndSurveyId = async (req, res) => {
             survey: {
                 ...mapPublicSurveyDetail(surveyInstance),
                 isFeatured: projectInstance.featuredSurveyId === surveyInstance.id,
-                respondentRequiredFields: REQUIRED_AUTH_SURVEY_PROFILE_FIELDS,
+                respondentRequiredFields: REQUIRED_ANON_SURVEY_FIELDS,
             },
         });
     } catch (error) {
@@ -1688,8 +1690,8 @@ export const getPublicSurveyRespondentEligibilityByProjectSlugAndSurveyId = asyn
             eligible: canRespondAnonymously,
             hasResponded: false,
             allowAnonymousResponses: canRespondAnonymously,
-            requiredFields: REQUIRED_AUTH_SURVEY_PROFILE_FIELDS,
-            missingFields: canRespondAnonymously ? [] : REQUIRED_AUTH_SURVEY_PROFILE_FIELDS,
+            requiredFields: REQUIRED_ANON_SURVEY_FIELDS,
+            missingFields: canRespondAnonymously ? [] : REQUIRED_ANON_SURVEY_FIELDS,
             message: canRespondAnonymously
                 ? 'Puede responder de forma anónima completando los datos requeridos'
                 : 'Debe iniciar sesión para responder esta encuesta',
@@ -1745,7 +1747,7 @@ export const getPublicSurveyResultsByProjectSlugAndSurveyId = async (req, res) =
 
         const answerInstances = await model.ProjectSurveyAnswer.findAll({
             where: { projectSurveyId: surveyInstance.id },
-            attributes: ['answers', 'dateOfBirth', 'genre', 'provinceId'],
+            attributes: ['answers', 'age', 'genre', 'provinceId'],
             order: [['createdAt', 'ASC']],
         });
 
@@ -1773,9 +1775,8 @@ export const submitProjectSurveyResponse = async (req, res) => {
     const {
         answers,
         respondentData,
-        dateOfBirth,
+        age,
         genre,
-        documentNumber,
         provinceId,
     } = req.body || {};
 
@@ -1796,14 +1797,13 @@ export const submitProjectSurveyResponse = async (req, res) => {
         }
 
         let responseUserId = null;
-        let responseDateOfBirth = null;
+        let responseAge = null;
         let responseGenre = null;
         let responseProvinceId = null;
-        let responseDocumentNumber = null;
 
         if (req.user?.id) {
             const userInstance = await model.User.findByPk(req.user.id, {
-                attributes: ['id', 'dateOfBirth', 'genre', 'documentNumber', 'provinceId'],
+                attributes: ['id', 'dateOfBirth', 'genre', 'provinceId'],
             });
 
             if (!userInstance) {
@@ -1813,7 +1813,14 @@ export const submitProjectSurveyResponse = async (req, res) => {
                 });
             }
 
-            const missingFields = REQUIRED_AUTH_SURVEY_PROFILE_FIELDS.filter((fieldName) => !userInstance[fieldName]);
+            const normalizedDateOfBirth = normalizeDateOfBirth(userInstance.dateOfBirth);
+            const missingFields = REQUIRED_AUTH_SURVEY_PROFILE_FIELDS.filter((fieldName) => {
+                if (fieldName === 'dateOfBirth') {
+                    return !normalizedDateOfBirth;
+                }
+
+                return !userInstance[fieldName];
+            });
             if (missingFields.length > 0) {
                 return res.status(422).json({
                     code: 'PROFILE_INCOMPLETE',
@@ -1822,11 +1829,19 @@ export const submitProjectSurveyResponse = async (req, res) => {
                 });
             }
 
+            const calculatedAge = resolveRespondentAge(normalizedDateOfBirth);
+            if (calculatedAge === null || calculatedAge < MIN_RESPONDENT_AGE) {
+                return res.status(422).json({
+                    code: 'PROFILE_INCOMPLETE',
+                    message: 'Debe completar su perfil antes de responder encuestas',
+                    missingFields: ['dateOfBirth'],
+                });
+            }
+
             responseUserId = userInstance.id;
-            responseDateOfBirth = userInstance.dateOfBirth;
+            responseAge = calculatedAge;
             responseGenre = userInstance.genre;
             responseProvinceId = userInstance.provinceId;
-            responseDocumentNumber = userInstance.documentNumber;
 
             const existingAnswer = await model.ProjectSurveyAnswer.findOne({
                 where: {
@@ -1850,22 +1865,17 @@ export const submitProjectSurveyResponse = async (req, res) => {
                 });
             }
 
-            const normalizedDateOfBirth = normalizeDateOfBirth(dateOfBirth);
+            const normalizedAge = normalizeAge(age);
             const normalizedGenre = normalizeGenre(genre);
-            const normalizedDocumentNumber = normalizeDocumentNumber(documentNumber);
             const normalizedProvinceId = await normalizeProvinceId(provinceId);
             const errors = [];
 
-            if (!normalizedDateOfBirth) {
-                errors.push({ field: 'dateOfBirth', message: 'La fecha de nacimiento debe tener formato YYYY-MM-DD' });
+            if (normalizedAge === null) {
+                errors.push({ field: 'age', message: `La edad debe ser un entero entre ${MIN_RESPONDENT_AGE} y 120` });
             }
 
             if (!normalizedGenre) {
                 errors.push({ field: 'genre', message: `El campo genre debe ser uno de: ${ALLOWED_GENRES.join(', ')}` });
-            }
-
-            if (!normalizedDocumentNumber) {
-                errors.push({ field: 'documentNumber', message: 'El número de documento debe contener solo dígitos' });
             }
 
             if (!normalizedProvinceId) {
@@ -1880,26 +1890,9 @@ export const submitProjectSurveyResponse = async (req, res) => {
                 });
             }
 
-            responseDateOfBirth = normalizedDateOfBirth;
+            responseAge = normalizedAge;
             responseGenre = normalizedGenre;
             responseProvinceId = normalizedProvinceId;
-            responseDocumentNumber = normalizedDocumentNumber;
-
-            const existingAnonymousAnswer = await model.ProjectSurveyAnswer.findOne({
-                where: {
-                    projectSurveyId: surveyInstance.id,
-                    userId: null,
-                    documentNumber: responseDocumentNumber,
-                },
-                attributes: ['id'],
-            });
-
-            if (existingAnonymousAnswer) {
-                return res.status(409).json({
-                    code: 'DUPLICATE_RESPONSE_DOCUMENT',
-                    message: 'Ya existe una respuesta registrada con ese número de documento para esta encuesta',
-                });
-            }
         }
 
         const { errors: answerValidationErrors, normalizedAnswers } = normalizeAndValidateSurveyAnswers(
@@ -1919,18 +1912,12 @@ export const submitProjectSurveyResponse = async (req, res) => {
 
         const answerInstance = await model.ProjectSurveyAnswer.create({
             projectSurveyId: surveyInstance.id,
-            respondentData: req.user?.id
-                ? (respondentData || null)
-                : {
-                    ...(respondentData && typeof respondentData === 'object' ? respondentData : {}),
-                    documentNumber: responseDocumentNumber,
-                },
+            respondentData: respondentData || null,
             answers: normalizedAnswers,
             userId: responseUserId,
-            dateOfBirth: responseDateOfBirth,
+            age: responseAge,
             genre: responseGenre,
             provinceId: responseProvinceId,
-            documentNumber: responseDocumentNumber,
         }, {
             transaction,
         });

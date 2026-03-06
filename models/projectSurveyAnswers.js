@@ -46,8 +46,8 @@ export default (sequelize, DataTypes) => {
       type: DataTypes.INTEGER,
       allowNull: true
     },
-    dateOfBirth: {
-      type: DataTypes.DATEONLY,
+    age: {
+      type: DataTypes.INTEGER,
       allowNull: true
     },
     genre: {
@@ -56,10 +56,6 @@ export default (sequelize, DataTypes) => {
     },
     provinceId: {
       type: DataTypes.INTEGER,
-      allowNull: true
-    },
-    documentNumber: {
-      type: DataTypes.STRING,
       allowNull: true
     }
   }, {

@@ -22,11 +22,9 @@ const configureJwt = passport => {
 					'email',
 					'dateOfBirth',
 					'genre',
-					'documentNumber',
 					'provinceId',
 					'dateOfBirthLockedAt',
 					'genreLockedAt',
-					'documentNumberLockedAt',
 					'provinceLockedAt',
 				],
 				where: {

@@ -33,7 +33,7 @@ Base: `/hub/projects`
     - `multiple-choice`: conteo + porcentaje por opción (sobre respondentes que contestaron la pregunta).
     - `rating`: distribución por valor, promedio y escala.
     - `open-ended`: listado completo de respuestas de texto no vacías.
-  - El endpoint no expone campos sensibles crudos como `documentNumber`.
+  - El endpoint no expone campos sensibles crudos de identificación personal.
 
 ## Endpoint de envío de respuestas
 
@@ -47,21 +47,20 @@ Base: `/projects/:projectId/surveys`
     - `value` (según tipo de pregunta)
     - `openText` (opcional)
   - Para anónimo requiere además:
-    - `dateOfBirth` (`YYYY-MM-DD`)
+    - `age` (entero, mínimo 14)
     - `genre` (enum español)
     - `provinceId` (válido)
-    - `documentNumber` (solo dígitos)
 
 ## Reglas de negocio vigentes
 
 1. La encuesta debe estar disponible públicamente (`public`, `visible`, no cerrada).
 2. Usuario logueado:
-   - Debe tener perfil de encuesta completo (`dateOfBirth`, `genre`, `provinceId`, `documentNumber`).
+  - Debe tener perfil de encuesta completo (`dateOfBirth`, `genre`, `provinceId`).
    - Se bloquea más de una respuesta por encuesta y usuario (`projectSurveyId + userId`).
   - El endpoint de elegibilidad refleja este bloqueo antes de comenzar (`ALREADY_RESPONDED`).
 3. Usuario anónimo:
    - Solo permitido si `allowAnonymousResponses = true`.
-   - Se bloquea más de una respuesta por encuesta + DNI (`projectSurveyId + documentNumber`, con `userId = null`).
+  - Debe informar edad válida (mínimo 14), género y provincia.
 4. `answers` se valida contra el schema de preguntas de la encuesta:
   - `questionIndex` debe existir y no repetirse.
    - `single-choice`: opción válida.
@@ -75,10 +74,9 @@ Base: `/projects/:projectId/surveys`
 Tabla: `ProjectSurveyAnswers`
 
 Campos demográficos persistidos:
-- `dateOfBirth`
+- `age`
 - `genre`
 - `provinceId`
-- `documentNumber` (columna dedicada)
 
 Además se mantiene `respondentData` para metadatos complementarios.
 
@@ -92,13 +90,6 @@ Además se mantiene `respondentData` para metadatos complementarios.
 - `INVALID_RESPONDENT_DATA` (400): datos demográficos inválidos.
 - `INVALID_ANSWERS` (400): respuestas inválidas/incompletas respecto al schema.
 - `DUPLICATE_RESPONSE_USER` (409): usuario logueado ya respondió.
-- `DUPLICATE_RESPONSE_DOCUMENT` (409): ya existe respuesta anónima con ese DNI.
-
-## Privacidad / alcance de uso de DNI
-
-En flujo anónimo, `documentNumber` se usa principalmente para deduplicación de respuestas por encuesta.
-
-A nivel UX se comunica que el dato se recolecta internamente y no se comparte con el legislador.
 
 En endpoints públicos de resultados solo se exponen agregados. Para categorías demográficas con muy baja frecuencia se aplican reglas de agrupación para reducir riesgo de reidentificación.
 

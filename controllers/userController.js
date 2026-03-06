@@ -39,19 +39,6 @@ const normalizeGenre = (value) => {
 	return normalized;
 };
 
-const normalizeDocumentNumber = (value) => {
-	if (typeof value !== 'string' && typeof value !== 'number') {
-		return null;
-	}
-
-	const normalized = String(value).trim();
-	if (!/^\d+$/.test(normalized)) {
-		return null;
-	}
-
-	return normalized;
-};
-
 const normalizeProvinceId = async (value) => {
 	if (typeof value !== 'number' && typeof value !== 'string') {
 		return null;
@@ -121,13 +108,6 @@ export const updateProfile = async (req, res) => {
 				lockKey: 'genreLockedAt',
 				normalize: normalizeGenre,
 				errorMessage: `El campo genre debe ser uno de: ${ALLOWED_GENRES.join(', ')}`,
-			},
-			{
-				key: 'documentNumber',
-				label: 'documentNumber',
-				lockKey: 'documentNumberLockedAt',
-				normalize: normalizeDocumentNumber,
-				errorMessage: 'El número de documento debe contener solo dígitos',
 			},
 			{
 				key: 'provinceId',

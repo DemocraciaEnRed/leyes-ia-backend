@@ -102,7 +102,7 @@ export default (sequelize, DataTypes) => {
     }
 
     getUserSessionInfo() {
-      const hasSurveyProfile = Boolean(this.dateOfBirth && this.genre && this.documentNumber && this.provinceId);
+      const hasSurveyProfile = Boolean(this.dateOfBirth && this.genre && this.provinceId);
 
       return {
         id: this.id,
@@ -114,13 +114,11 @@ export default (sequelize, DataTypes) => {
         imageUrl: this.imageUrl || this.gravatarUrl,
         dateOfBirth: this.dateOfBirth,
         genre: this.genre,
-        documentNumber: this.documentNumber,
         provinceId: this.provinceId,
         hasSurveyProfile,
         surveyProfileLocks: {
           dateOfBirthLockedAt: this.dateOfBirthLockedAt,
           genreLockedAt: this.genreLockedAt,
-          documentNumberLockedAt: this.documentNumberLockedAt,
           provinceLockedAt: this.provinceLockedAt,
         },
       }

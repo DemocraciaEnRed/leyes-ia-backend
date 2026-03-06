@@ -4,7 +4,7 @@ Checklist manual para validar endpoints del flujo de respuesta de encuestas.
 
 ## Preparación
 
-- [ ] Base de datos con migraciones al día (incluida `00021-add-document-number-to-projectSurveyAnswers.js`).
+- [ ] Base de datos con migraciones al día (incluida `00022-replace-demographics-with-age-on-projectSurveyAnswers.js`).
 - [ ] Existe un proyecto publicado con una encuesta pública activa.
 - [ ] La encuesta tiene al menos 1 pregunta obligatoria.
 
@@ -24,8 +24,8 @@ Checklist manual para validar endpoints del flujo de respuesta de encuestas.
 ## Submit anónimo
 
 - [ ] Submit anónimo válido devuelve `201`.
-- [ ] Segundo submit anónimo con mismo DNI y misma encuesta devuelve `409` + `code: DUPLICATE_RESPONSE_DOCUMENT`.
-- [ ] Submit anónimo sin `documentNumber` devuelve `400` + `code: INVALID_RESPONDENT_DATA`.
+- [ ] Submit anónimo con `age < 14` devuelve `400` + `code: INVALID_RESPONDENT_DATA`.
+- [ ] Submit anónimo sin `age` devuelve `400` + `code: INVALID_RESPONDENT_DATA`.
 
 ## Validación de respuestas
 
