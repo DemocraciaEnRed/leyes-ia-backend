@@ -62,7 +62,7 @@ const isSurveyActive = (survey) => {
 
 const ALLOWED_GENRES = ['masculino', 'femenino', 'no_binario', 'otro', 'prefiero_no_decir'];
 const REQUIRED_AUTH_SURVEY_PROFILE_FIELDS = ['dateOfBirth', 'genre', 'documentNumber', 'provinceId'];
-const MIN_PUBLIC_DEMOGRAPHIC_COUNT = 3;
+const MIN_PUBLIC_DEMOGRAPHIC_COUNT = 1;
 
 const GENRE_LABELS = {
     masculino: 'Masculino',
@@ -363,9 +363,10 @@ const buildQuestionResults = ({ surveyQuestions, answerInstances }) => {
     });
 };
 
-const buildDemographicsResults = (answerInstances) => {
+const buildDemographicsResults = async (answerInstances) => {
     const genreCounts = new Map();
     const ageRangeCounts = new Map();
+    const provinceCounts = new Map();
 
     AGE_RANGE_BUCKETS.forEach((bucket) => {
         ageRangeCounts.set(bucket.key, 0);
@@ -373,6 +374,7 @@ const buildDemographicsResults = (answerInstances) => {
 
     let totalWithGenre = 0;
     let totalWithAge = 0;
+    let totalWithProvince = 0;
 
     answerInstances.forEach((instance) => {
         const genreKey = normalizeGenre(instance.genre);
@@ -389,6 +391,12 @@ const buildDemographicsResults = (answerInstances) => {
                 ageRangeCounts.set(bucket.key, (ageRangeCounts.get(bucket.key) || 0) + 1);
             }
         }
+
+        const provinceId = toPositiveInteger(instance.provinceId);
+        if (provinceId !== null) {
+            totalWithProvince += 1;
+            provinceCounts.set(String(provinceId), (provinceCounts.get(String(provinceId)) || 0) + 1);
+        }
     });
 
     const ageRangeLabels = AGE_RANGE_BUCKETS.reduce((accumulator, bucket) => {
@@ -396,9 +404,30 @@ const buildDemographicsResults = (answerInstances) => {
         return accumulator;
     }, {});
 
+    const provinceIds = Array.from(provinceCounts.keys())
+        .map((provinceId) => toPositiveInteger(provinceId))
+        .filter((provinceId) => provinceId !== null);
+
+    const provinceInstances = provinceIds.length > 0
+        ? await model.Province.findAll({
+            where: {
+                id: {
+                    [Op.in]: provinceIds,
+                },
+            },
+            attributes: ['id', 'name'],
+        })
+        : [];
+
+    const provinceLabels = provinceInstances.reduce((accumulator, provinceInstance) => {
+        accumulator[String(provinceInstance.id)] = provinceInstance.name;
+        return accumulator;
+    }, {});
+
     return {
         totalWithGenre,
         totalWithAge,
+        totalWithProvince,
         genre: applyPrivacyThresholdToDistribution({
             counts: genreCounts,
             labels: GENRE_LABELS,
@@ -410,6 +439,13 @@ const buildDemographicsResults = (answerInstances) => {
             counts: ageRangeCounts,
             labels: ageRangeLabels,
             total: totalWithAge,
+            otherKey: 'other',
+            otherLabel: 'Otros / No informado',
+        }),
+        provinces: applyPrivacyThresholdToDistribution({
+            counts: provinceCounts,
+            labels: provinceLabels,
+            total: totalWithProvince,
             otherKey: 'other',
             otherLabel: 'Otros / No informado',
         }),
@@ -1709,13 +1745,13 @@ export const getPublicSurveyResultsByProjectSlugAndSurveyId = async (req, res) =
 
         const answerInstances = await model.ProjectSurveyAnswer.findAll({
             where: { projectSurveyId: surveyInstance.id },
-            attributes: ['answers', 'dateOfBirth', 'genre'],
+            attributes: ['answers', 'dateOfBirth', 'genre', 'provinceId'],
             order: [['createdAt', 'ASC']],
         });
 
         const surveyQuestions = Array.isArray(surveyInstance.questions) ? surveyInstance.questions : [];
         const questions = buildQuestionResults({ surveyQuestions, answerInstances });
-        const demographics = buildDemographicsResults(answerInstances);
+        const demographics = await buildDemographicsResults(answerInstances);
 
         return res.status(200).json({
             survey: mapPublicSurveyDetail(surveyInstance),
