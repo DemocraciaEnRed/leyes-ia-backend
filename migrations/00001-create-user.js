@@ -9,10 +9,12 @@ export async function up({ context: queryInterface }) {
       type: Sequelize.DataTypes.INTEGER
     },
       firstName: {
-        type: Sequelize.DataTypes.STRING
+        type: Sequelize.DataTypes.STRING,
+        allowNull: false,
       },
       lastName: {
-        type: Sequelize.DataTypes.STRING
+        type: Sequelize.DataTypes.STRING,
+        allowNull: false,
       },
       email: {
         type: Sequelize.DataTypes.STRING,
@@ -42,6 +44,38 @@ export async function up({ context: queryInterface }) {
         allowNull: true,
       },
       lastLogin: {
+        type: Sequelize.DataTypes.DATE,
+        allowNull: true,
+      },
+      dateOfBirth: {
+        type: Sequelize.DataTypes.DATEONLY,
+        allowNull: true,
+      },
+      genre: {
+        type: Sequelize.DataTypes.STRING,
+        allowNull: true,
+      },
+      documentNumber: {
+        type: Sequelize.DataTypes.STRING,
+        allowNull: true,
+      },
+      dateOfBirthLockedAt: {
+        type: Sequelize.DataTypes.DATE,
+        allowNull: true,
+      },
+      genreLockedAt: {
+        type: Sequelize.DataTypes.DATE,
+        allowNull: true,
+      },
+      documentNumberLockedAt: {
+        type: Sequelize.DataTypes.DATE,
+        allowNull: true,
+      },
+      provinceId: {
+        type: Sequelize.DataTypes.INTEGER,
+        allowNull: true,
+      },
+      provinceLockedAt: {
         type: Sequelize.DataTypes.DATE,
         allowNull: true,
       },

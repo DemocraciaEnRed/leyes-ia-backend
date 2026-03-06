@@ -1,5 +1,4 @@
 import { Sequelize } from 'sequelize'
-import { is } from 'zod/locales';
 
 export async function up({ context: queryInterface }) {
   await queryInterface.createTable('ProjectSurveys', {
@@ -113,8 +112,21 @@ export async function up({ context: queryInterface }) {
     timestamps: true,
     updatedAt: true
   });
+
+  await queryInterface.addConstraint('Projects', {
+    fields: ['featuredSurveyId'],
+    type: 'foreign key',
+    name: 'projects_featuredSurveyId_fkey',
+    references: {
+      table: 'ProjectSurveys',
+      field: 'id',
+    },
+    onUpdate: 'CASCADE',
+    onDelete: 'SET NULL',
+  });
 }
 
 export async function down({ context: queryInterface }) {
+  await queryInterface.removeConstraint('Projects', 'projects_featuredSurveyId_fkey');
   await queryInterface.dropTable('ProjectSurveys');
 }

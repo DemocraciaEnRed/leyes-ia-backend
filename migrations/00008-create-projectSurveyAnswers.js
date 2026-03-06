@@ -24,6 +24,28 @@ export async function up({ context: queryInterface }) {
       type: Sequelize.DataTypes.JSON,
       allowNull: true
     },
+    userId: {
+      type: Sequelize.DataTypes.INTEGER,
+      allowNull: true,
+      references: {
+        model: 'Users',
+        key: 'id',
+      },
+      onUpdate: 'CASCADE',
+      onDelete: 'SET NULL',
+    },
+    age: {
+      type: Sequelize.DataTypes.INTEGER,
+      allowNull: true,
+    },
+    genre: {
+      type: Sequelize.DataTypes.STRING,
+      allowNull: true,
+    },
+    provinceId: {
+      type: Sequelize.DataTypes.INTEGER,
+      allowNull: true,
+    },
     createdAt: {
       type: Sequelize.DataTypes.DATE,
       defaultValue: Sequelize.fn('now'),
@@ -38,6 +60,11 @@ export async function up({ context: queryInterface }) {
     timestamps: true,
     updatedAt: true
   });
+
+  await queryInterface.addIndex('ProjectSurveyAnswers', ['projectSurveyId']);
+  await queryInterface.addIndex('ProjectSurveyAnswers', ['userId']);
+  await queryInterface.addIndex('ProjectSurveyAnswers', ['provinceId']);
+  await queryInterface.addIndex('ProjectSurveyAnswers', ['age']);
 }
 
 export async function down({ context: queryInterface }) {

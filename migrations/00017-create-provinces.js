@@ -77,8 +77,34 @@ export async function up({ context: queryInterface }) {
     createdAt: now,
     updatedAt: now,
   })));
+
+  await queryInterface.addConstraint('Users', {
+    fields: ['provinceId'],
+    type: 'foreign key',
+    name: 'users_provinceId_fkey',
+    references: {
+      table: 'Provinces',
+      field: 'id',
+    },
+    onUpdate: 'CASCADE',
+    onDelete: 'SET NULL',
+  });
+
+  await queryInterface.addConstraint('ProjectSurveyAnswers', {
+    fields: ['provinceId'],
+    type: 'foreign key',
+    name: 'projectSurveyAnswers_provinceId_fkey',
+    references: {
+      table: 'Provinces',
+      field: 'id',
+    },
+    onUpdate: 'CASCADE',
+    onDelete: 'SET NULL',
+  });
 }
 
 export async function down({ context: queryInterface }) {
+  await queryInterface.removeConstraint('ProjectSurveyAnswers', 'projectSurveyAnswers_provinceId_fkey');
+  await queryInterface.removeConstraint('Users', 'users_provinceId_fkey');
   await queryInterface.dropTable('Provinces');
 }

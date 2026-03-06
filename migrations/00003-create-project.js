@@ -14,7 +14,9 @@ export async function up({ context: queryInterface }) {
       references: {
         model: 'Users',
         key: 'id'
-      }
+      },
+      onUpdate: 'CASCADE',
+      onDelete: 'RESTRICT',
     },
     code: {
       type: Sequelize.DataTypes.STRING,
@@ -40,7 +42,7 @@ export async function up({ context: queryInterface }) {
     },
     authorFullname: {
       type: Sequelize.DataTypes.STRING,
-      allowNull: true
+      allowNull: false
     },
     title: {
       type: Sequelize.DataTypes.STRING,
@@ -65,6 +67,10 @@ export async function up({ context: queryInterface }) {
     proposed_questions:{
       type: Sequelize.DataTypes.JSON,
       allowNull: true
+    },
+    featuredSurveyId: {
+      type: Sequelize.DataTypes.INTEGER,
+      allowNull: true,
     },
     publishedAt: {
       type: Sequelize.DataTypes.DATE,
