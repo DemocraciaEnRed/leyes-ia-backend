@@ -21,6 +21,20 @@ Base: `/hub/projects`
     - `hasResponded: true`
     - `code: "ALREADY_RESPONDED"`
 
+- `GET /slug/:projectSlug/surveys/:surveyId/results`
+  - Devuelve resultados agregados públicos de la encuesta.
+  - Incluye:
+    - `survey` (metadatos públicos + `questions`)
+    - `summary` (`totalResponses`, `totalQuestions`)
+    - `questions` (estadísticas por pregunta según tipo)
+    - `demographics` (distribución por `genre` y rangos de edad)
+  - Reglas de agregación por tipo:
+    - `single-choice`: conteo + porcentaje por opción.
+    - `multiple-choice`: conteo + porcentaje por opción (sobre respondentes que contestaron la pregunta).
+    - `rating`: distribución por valor, promedio y escala.
+    - `open-ended`: listado completo de respuestas de texto no vacías.
+  - El endpoint no expone campos sensibles crudos como `documentNumber`.
+
 ## Endpoint de envío de respuestas
 
 Base: `/projects/:projectId/surveys`
@@ -85,6 +99,8 @@ Además se mantiene `respondentData` para metadatos complementarios.
 En flujo anónimo, `documentNumber` se usa principalmente para deduplicación de respuestas por encuesta.
 
 A nivel UX se comunica que el dato se recolecta internamente y no se comparte con el legislador.
+
+En endpoints públicos de resultados solo se exponen agregados. Para categorías demográficas con muy baja frecuencia se aplican reglas de agrupación para reducir riesgo de reidentificación.
 
 ## Nota de evolución
 

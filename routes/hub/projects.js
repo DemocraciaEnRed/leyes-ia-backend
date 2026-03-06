@@ -18,6 +18,7 @@ router.get('/slug/:projectSlug', projectController.getPublishedProjectBySlug);
 router.get('/slug/:projectSlug/featured-survey', projectSurveyController.getPublicFeaturedSurveyByProjectSlug);
 router.get('/slug/:projectSlug/available-surveys', projectSurveyController.getPublicAvailableSurveysByProjectSlug);
 router.get('/slug/:projectSlug/surveys/:surveyId', projectSurveyController.getPublicSurveyByProjectSlugAndSurveyId);
+router.get('/slug/:projectSlug/surveys/:surveyId/results', projectSurveyController.getPublicSurveyResultsByProjectSlugAndSurveyId);
 router.get('/slug/:projectSlug/surveys/:surveyId/respondent-eligibility', authenticate, projectSurveyController.getPublicSurveyRespondentEligibilityByProjectSlugAndSurveyId);
 
 export default router;

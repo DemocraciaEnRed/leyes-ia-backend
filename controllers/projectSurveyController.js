@@ -62,6 +62,359 @@ const isSurveyActive = (survey) => {
 
 const ALLOWED_GENRES = ['masculino', 'femenino', 'no_binario', 'otro', 'prefiero_no_decir'];
 const REQUIRED_AUTH_SURVEY_PROFILE_FIELDS = ['dateOfBirth', 'genre', 'documentNumber', 'provinceId'];
+const MIN_PUBLIC_DEMOGRAPHIC_COUNT = 3;
+
+const GENRE_LABELS = {
+    masculino: 'Masculino',
+    femenino: 'Femenino',
+    no_binario: 'No binario',
+    otro: 'Otro',
+    prefiero_no_decir: 'Prefiero no decir',
+};
+
+const AGE_RANGE_BUCKETS = [
+    { key: 'under_18', label: 'Menos de 18', min: 0, max: 17 },
+    { key: '18_24', label: '18-24', min: 18, max: 24 },
+    { key: '25_34', label: '25-34', min: 25, max: 34 },
+    { key: '35_44', label: '35-44', min: 35, max: 44 },
+    { key: '45_54', label: '45-54', min: 45, max: 54 },
+    { key: '55_64', label: '55-64', min: 55, max: 64 },
+    { key: '65_plus', label: '65+', min: 65, max: 200 },
+];
+
+const toPositiveInteger = (value, fallback = null) => {
+    const normalized = Number.parseInt(String(value), 10);
+
+    if (!Number.isInteger(normalized) || normalized < 1) {
+        return fallback;
+    }
+
+    return normalized;
+};
+
+const normalizeOption = (value) => {
+    if (typeof value !== 'string') {
+        return null;
+    }
+
+    const trimmed = value.trim();
+    if (!trimmed) {
+        return null;
+    }
+
+    return trimmed;
+};
+
+const getAnswerByQuestionIndex = (answers, questionIndex) => {
+    if (!Array.isArray(answers)) {
+        return null;
+    }
+
+    return answers.find((answer) => {
+        if (!answer || typeof answer !== 'object' || Array.isArray(answer)) {
+            return false;
+        }
+
+        const normalizedIndex = Number.parseInt(String(answer.questionIndex), 10);
+        return normalizedIndex === questionIndex;
+    }) || null;
+};
+
+const resolveRespondentAge = (dateOfBirth) => {
+    if (typeof dateOfBirth !== 'string' || !dateOfBirth.trim()) {
+        return null;
+    }
+
+    const birthDate = new Date(dateOfBirth);
+    if (Number.isNaN(birthDate.getTime())) {
+        return null;
+    }
+
+    const today = new Date();
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const monthDiff = today.getMonth() - birthDate.getMonth();
+
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+        age -= 1;
+    }
+
+    if (!Number.isInteger(age) || age < 0 || age > 120) {
+        return null;
+    }
+
+    return age;
+};
+
+const applyPrivacyThresholdToDistribution = ({
+    counts,
+    labels,
+    total,
+    otherKey = 'other',
+    otherLabel = 'Otros',
+    minCount = MIN_PUBLIC_DEMOGRAPHIC_COUNT,
+}) => {
+    const safeTotal = Number.isInteger(total) && total > 0 ? total : 0;
+    const results = [];
+    let otherCount = 0;
+
+    for (const [key, countValue] of counts.entries()) {
+        const count = Number.parseInt(String(countValue), 10);
+        if (!Number.isInteger(count) || count <= 0) {
+            continue;
+        }
+
+        if (count < minCount) {
+            otherCount += count;
+            continue;
+        }
+
+        results.push({
+            key,
+            label: labels[key] || key,
+            count,
+            percentage: safeTotal > 0 ? Number(((count / safeTotal) * 100).toFixed(2)) : 0,
+        });
+    }
+
+    if (otherCount > 0) {
+        results.push({
+            key: otherKey,
+            label: otherLabel,
+            count: otherCount,
+            percentage: safeTotal > 0 ? Number(((otherCount / safeTotal) * 100).toFixed(2)) : 0,
+        });
+    }
+
+    return results.sort((a, b) => b.count - a.count);
+};
+
+const buildQuestionResults = ({ surveyQuestions, answerInstances }) => {
+    if (!Array.isArray(surveyQuestions) || surveyQuestions.length === 0) {
+        return [];
+    }
+
+    const totalResponses = Array.isArray(answerInstances) ? answerInstances.length : 0;
+
+    return surveyQuestions.map((question, questionIndex) => {
+        const questionType = getNormalizedQuestionType(question?.type);
+        const questionTitle = typeof question?.title === 'string' && question.title.trim()
+            ? question.title.trim()
+            : `Pregunta ${questionIndex + 1}`;
+        const options = Array.isArray(question?.options)
+            ? question.options.map(normalizeOption).filter(Boolean)
+            : [];
+
+        let totalAnswers = 0;
+        let skippedCount = 0;
+
+        if (questionType === 'single-choice') {
+            const optionCounts = new Map(options.map((option) => [option, 0]));
+
+            answerInstances.forEach((instance) => {
+                const answerItem = getAnswerByQuestionIndex(instance.answers, questionIndex);
+                if (!answerItem) {
+                    skippedCount += 1;
+                    return;
+                }
+
+                const selectedOption = normalizeOption(answerItem.value);
+                if (!selectedOption) {
+                    skippedCount += 1;
+                    return;
+                }
+
+                totalAnswers += 1;
+                optionCounts.set(selectedOption, (optionCounts.get(selectedOption) || 0) + 1);
+            });
+
+            const distribution = Array.from(optionCounts.entries()).map(([option, count]) => ({
+                option,
+                count,
+                percentage: totalAnswers > 0 ? Number(((count / totalAnswers) * 100).toFixed(2)) : 0,
+            }));
+
+            return {
+                questionIndex,
+                title: questionTitle,
+                type: questionType,
+                required: Boolean(question?.required),
+                totalResponses,
+                totalAnswers,
+                skippedCount,
+                distribution,
+            };
+        }
+
+        if (questionType === 'multiple-choice') {
+            const optionCounts = new Map(options.map((option) => [option, 0]));
+
+            answerInstances.forEach((instance) => {
+                const answerItem = getAnswerByQuestionIndex(instance.answers, questionIndex);
+                if (!answerItem) {
+                    skippedCount += 1;
+                    return;
+                }
+
+                const selectedValues = Array.isArray(answerItem.value)
+                    ? Array.from(new Set(answerItem.value.map(normalizeOption).filter(Boolean)))
+                    : [];
+
+                if (selectedValues.length === 0) {
+                    skippedCount += 1;
+                    return;
+                }
+
+                totalAnswers += 1;
+                selectedValues.forEach((selectedOption) => {
+                    optionCounts.set(selectedOption, (optionCounts.get(selectedOption) || 0) + 1);
+                });
+            });
+
+            const distribution = Array.from(optionCounts.entries()).map(([option, count]) => ({
+                option,
+                count,
+                percentage: totalAnswers > 0 ? Number(((count / totalAnswers) * 100).toFixed(2)) : 0,
+            }));
+
+            return {
+                questionIndex,
+                title: questionTitle,
+                type: questionType,
+                required: Boolean(question?.required),
+                totalResponses,
+                totalAnswers,
+                skippedCount,
+                distribution,
+            };
+        }
+
+        if (questionType === 'rating') {
+            const scale = toPositiveInteger(question?.scale, 5);
+            const ratingCounts = new Map(Array.from({ length: scale }, (_, index) => [index + 1, 0]));
+            let weightedTotal = 0;
+
+            answerInstances.forEach((instance) => {
+                const answerItem = getAnswerByQuestionIndex(instance.answers, questionIndex);
+                if (!answerItem) {
+                    skippedCount += 1;
+                    return;
+                }
+
+                const ratingValue = Number.parseInt(String(answerItem.value), 10);
+                if (!Number.isInteger(ratingValue) || ratingValue < 1 || ratingValue > scale) {
+                    skippedCount += 1;
+                    return;
+                }
+
+                totalAnswers += 1;
+                weightedTotal += ratingValue;
+                ratingCounts.set(ratingValue, (ratingCounts.get(ratingValue) || 0) + 1);
+            });
+
+            const distribution = Array.from(ratingCounts.entries()).map(([value, count]) => ({
+                value,
+                count,
+                percentage: totalAnswers > 0 ? Number(((count / totalAnswers) * 100).toFixed(2)) : 0,
+            }));
+
+            return {
+                questionIndex,
+                title: questionTitle,
+                type: questionType,
+                required: Boolean(question?.required),
+                totalResponses,
+                totalAnswers,
+                skippedCount,
+                scale,
+                average: totalAnswers > 0 ? Number((weightedTotal / totalAnswers).toFixed(2)) : null,
+                distribution,
+            };
+        }
+
+        const responses = [];
+
+        answerInstances.forEach((instance) => {
+            const answerItem = getAnswerByQuestionIndex(instance.answers, questionIndex);
+            if (!answerItem) {
+                skippedCount += 1;
+                return;
+            }
+
+            const openAnswer = normalizeOption(answerItem.value) || normalizeOption(answerItem.openText);
+            if (!openAnswer) {
+                skippedCount += 1;
+                return;
+            }
+
+            totalAnswers += 1;
+            responses.push(openAnswer);
+        });
+
+        return {
+            questionIndex,
+            title: questionTitle,
+            type: questionType,
+            required: Boolean(question?.required),
+            totalResponses,
+            totalAnswers,
+            skippedCount,
+            responses,
+        };
+    });
+};
+
+const buildDemographicsResults = (answerInstances) => {
+    const genreCounts = new Map();
+    const ageRangeCounts = new Map();
+
+    AGE_RANGE_BUCKETS.forEach((bucket) => {
+        ageRangeCounts.set(bucket.key, 0);
+    });
+
+    let totalWithGenre = 0;
+    let totalWithAge = 0;
+
+    answerInstances.forEach((instance) => {
+        const genreKey = normalizeGenre(instance.genre);
+        if (genreKey) {
+            totalWithGenre += 1;
+            genreCounts.set(genreKey, (genreCounts.get(genreKey) || 0) + 1);
+        }
+
+        const age = resolveRespondentAge(instance.dateOfBirth);
+        if (age !== null) {
+            const bucket = AGE_RANGE_BUCKETS.find((item) => age >= item.min && age <= item.max);
+            if (bucket) {
+                totalWithAge += 1;
+                ageRangeCounts.set(bucket.key, (ageRangeCounts.get(bucket.key) || 0) + 1);
+            }
+        }
+    });
+
+    const ageRangeLabels = AGE_RANGE_BUCKETS.reduce((accumulator, bucket) => {
+        accumulator[bucket.key] = bucket.label;
+        return accumulator;
+    }, {});
+
+    return {
+        totalWithGenre,
+        totalWithAge,
+        genre: applyPrivacyThresholdToDistribution({
+            counts: genreCounts,
+            labels: GENRE_LABELS,
+            total: totalWithGenre,
+            otherKey: 'other',
+            otherLabel: 'Otros / No informado',
+        }),
+        ageRanges: applyPrivacyThresholdToDistribution({
+            counts: ageRangeCounts,
+            labels: ageRangeLabels,
+            total: totalWithAge,
+            otherKey: 'other',
+            otherLabel: 'Otros / No informado',
+        }),
+    };
+};
 
 const normalizeDateOfBirth = (value) => {
     if (typeof value !== 'string') {
@@ -1310,6 +1663,74 @@ export const getPublicSurveyRespondentEligibilityByProjectSlugAndSurveyId = asyn
         return res.status(500).json({ error: 'Internal server error' });
     }
 }
+
+export const getPublicSurveyResultsByProjectSlugAndSurveyId = async (req, res) => {
+    const { projectSlug, surveyId } = req.params;
+
+    try {
+        const projectInstance = await model.Project.findOne({
+            where: publicProjectWhereClause(projectSlug),
+            attributes: ['id', 'slug'],
+        });
+
+        if (!projectInstance) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        const surveyInstance = await model.ProjectSurvey.findOne({
+            where: {
+                id: surveyId,
+                projectId: projectInstance.id,
+                ...getPublicAvailableSurveyWhereClause(),
+            },
+            attributes: [
+                'id',
+                'projectId',
+                'title',
+                'about',
+                'type',
+                'welcomeTitle',
+                'welcomeDescription',
+                'allowAnonymousResponses',
+                'questions',
+                'responsesCount',
+                'closedAt',
+                'createdAt',
+                'updatedAt',
+            ],
+        });
+
+        if (!surveyInstance) {
+            return res.status(404).json({
+                code: 'SURVEY_UNAVAILABLE',
+                message: 'Survey not found or unavailable',
+            });
+        }
+
+        const answerInstances = await model.ProjectSurveyAnswer.findAll({
+            where: { projectSurveyId: surveyInstance.id },
+            attributes: ['answers', 'dateOfBirth', 'genre'],
+            order: [['createdAt', 'ASC']],
+        });
+
+        const surveyQuestions = Array.isArray(surveyInstance.questions) ? surveyInstance.questions : [];
+        const questions = buildQuestionResults({ surveyQuestions, answerInstances });
+        const demographics = buildDemographicsResults(answerInstances);
+
+        return res.status(200).json({
+            survey: mapPublicSurveyDetail(surveyInstance),
+            summary: {
+                totalResponses: answerInstances.length,
+                totalQuestions: surveyQuestions.length,
+            },
+            questions,
+            demographics,
+        });
+    } catch (error) {
+        console.error('Error fetching public survey results by slug and surveyId:', error);
+        return res.status(500).json({ error: 'Internal server error' });
+    }
+};
 
 export const submitProjectSurveyResponse = async (req, res) => {
     const { projectId, surveyId } = req.params;
