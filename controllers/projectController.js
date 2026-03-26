@@ -240,6 +240,7 @@ export const getProjectCategories = async (req, res) => {
 // Note: We are using Multer
 
 export const createProject = async (req, res) => {
+    let transaction;
     try {
         if (!req.user) {
             return res.status(401).json({ message: 'Authentication required' });
@@ -262,6 +263,8 @@ export const createProject = async (req, res) => {
             return res.status(400).json({ message: 'Missing required fields' });
         }
 
+        transaction = await model.sequelize.transaction();
+
         // Create a new project in the database
         let newProjectCode = await projectHelper.generateUniqueProjectCode(model);
         const projectPdfFilename = `${newProjectCode}-project.pdf`;
@@ -275,7 +278,7 @@ export const createProject = async (req, res) => {
             description: description,
             filename: projectPdfFilename,
             authorFullname: authorFullname,
-        });
+        }, { transaction });
 
         console.log('Code created:', newProjectCode);
         console.log('Created new project:', newProject);
@@ -320,7 +323,7 @@ export const createProject = async (req, res) => {
                 s3Bucket: bucket,
                 s3Key: params.Key,
                 url: result.Location || null,
-            });
+            }, { transaction });
             console.log('Created ProjectFile instance:', newProjectFile);
         } catch (uploadErr) {
             console.error('Failed uploading', projectPdfFilename, 'to bucket', bucket);
@@ -358,7 +361,7 @@ export const createProject = async (req, res) => {
             status: knowledgeBaseCreateResponse.knowledge_base.last_indexing_job ? knowledgeBaseCreateResponse.knowledge_base.last_indexing_job.status : 'INDEX_JOB_STATUS_UNKNOWN',
             lastAPIResponse: knowledgeBaseCreateResponse.knowledge_base,
             lastAPIResponseAt: new Date(),
-        });
+        }, { transaction });
 
         await createSystemLog({
             performedBy: req.user.id,
@@ -368,7 +371,10 @@ export const createProject = async (req, res) => {
                 projectCode: newProject.code,
                 ownerUserId: req.user.id,
             },
+            transaction,
         });
+
+        await transaction.commit();
 
         return res.status(200).json({
             message: 'Project initialized successfully',
@@ -387,6 +393,9 @@ export const createProject = async (req, res) => {
         });
 
     } catch (error) {
+        if (transaction && !transaction.finished) {
+            await transaction.rollback();
+        }
         console.error(error)
         return res.status(500).json({ message: 'There was an error' })
     }
@@ -659,7 +668,8 @@ export const putSaveProjectFields = async (req, res) => {
             projectInstance.proposed_questions = proposed_questions;
         }
         projectInstance.status = 'ready'
-        
+
+        // Intentionally no transaction for now: single primary write; log write is best-effort.
         await projectInstance.save();
 
         if (req.user) {
@@ -736,6 +746,7 @@ export const postPublishProject = async (req, res) => {
         // For now, just set the publishedAt field to current date
         projectInstance.publishedAt = new Date();
         projectInstance.status = 'published';
+        // Intentionally no transaction for now: single primary write; log write is best-effort.
         await projectInstance.save();
 
         if (req.user) {
@@ -776,6 +787,7 @@ export const postUnpublishProject = async (req, res) => {
         // Set the publishedAt field to null
         projectInstance.publishedAt = null;
         projectInstance.status = 'ready';
+        // Intentionally no transaction for now: single primary write; log write is best-effort.
         await projectInstance.save();
 
         if (req.user) {
@@ -841,6 +853,7 @@ export const patchProjectOwner = async (req, res) => {
         }
 
         projectInstance.projectOwnerId = nextOwnerUserId;
+    // Intentionally no transaction for now: single primary write; log write is best-effort.
         await projectInstance.save();
 
         await createSystemLog({

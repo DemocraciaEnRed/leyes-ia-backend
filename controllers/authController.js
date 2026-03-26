@@ -54,6 +54,7 @@ const normalizeGenre = (value) => {
  */
 
 export const register = async (req, res) => {
+  let transaction;
   try {
 		const {
 			email,
@@ -122,15 +123,19 @@ export const register = async (req, res) => {
 			optionalProfileData.provinceLockedAt = now;
 		}
 
+		transaction = await model.sequelize.transaction();
+
 		const newUser = await model.User.create({
 			email,
 			firstName,
 			lastName,
 			password,
 			...optionalProfileData,
-		});
+		}, { transaction });
 		console.log('created user')
-		await newUser.update({ emailVerified: true, verifiedAt: now });
+		await newUser.update({ emailVerified: true, verifiedAt: now }, { transaction });
+
+		await transaction.commit();
 
 		// Temporalmente desactivado en prototipo: generación de token y envío de email de verificación.
 		// const token = await newUser.generateVerificationToken();
@@ -148,6 +153,9 @@ export const register = async (req, res) => {
       });
   
   } catch (error) {
+		if (transaction && !transaction.finished) {
+			await transaction.rollback();
+		}
     console.error(error);
     res.status(500).json({ message: 'Error al registrar el usuario' });
   }
@@ -208,6 +216,7 @@ export const refreshToken = async (req, res) => {
  * @returns {Object} - A message that the user's email has been verified
  */
 export const verify = async (req, res) => {
+	let transaction;
 	try {
 		// find the matching token
 		const token = await model.UserToken.findOne({ where: { token: req.params.token } });
@@ -231,16 +240,24 @@ export const verify = async (req, res) => {
 		if (user.emailVerified) {
 			return res.status(400).json({ message: msg.auth.error.alreadyVerified });
 		}
+
+		transaction = await model.sequelize.transaction();
+
 		// token exists and the user is not verified, so we can verify the user
-		await user.update({ emailVerified: true, verifiedAt: now });
+		await user.update({ emailVerified: true, verifiedAt: now }, { transaction });
 
 		// delete the token
-		await token.destroy();
+		await token.destroy({ transaction });
+
+		await transaction.commit();
 
 		// Show a friendly success message
 		return res.status(200).json({ message: msg.auth.success.verification });
 
 	} catch (error) {
+		if (transaction && !transaction.finished) {
+			await transaction.rollback();
+		}
 		console.error(error);
 		return res.status(500).json({ message: 'Error al verificar el usuario' });
 	}
@@ -308,6 +325,7 @@ export const forgot = async (req, res) => {
 }
 
 export const resetPassword = async (req, res) => {
+	let transaction;
 	try {
 		const { token } = req.params;
 		const { password } = req.body;
@@ -334,16 +352,24 @@ export const resetPassword = async (req, res) => {
 			const html = await AuthHelper.getNoUserHtml(email);
 			return res.status(400).send(html);
 		}
+
+		transaction = await model.sequelize.transaction();
+
 		// update the user's password
-		await user.update({ password });
+		await user.update({ password }, { transaction });
 
 		// delete the token
-		await resetToken.destroy();
+		await resetToken.destroy({ transaction });
+
+		await transaction.commit();
 		
 		// Show a friendly success message
 		return res.status(200).json({ message: msg.auth.success.passwordUpdated });
 	
 	} catch (error) {
+		if (transaction && !transaction.finished) {
+			await transaction.rollback();
+		}
 		console.error(error)
 		return res.status(500).json({ message: msg.error.default })
 	}
