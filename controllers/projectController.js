@@ -13,7 +13,7 @@ import { AI_USAGE_ACTIONS, recordProjectAiUsageEvent } from '../services/aiUsage
 
 export const getProjects = async (req, res) => {
     try {
-        const { category, draft, limit, scope } = req.query;
+        const { category, draft, limit, page, scope } = req.query;
         let whereClause = {};
         const include = [];
 
@@ -89,6 +89,14 @@ export const getProjects = async (req, res) => {
             }
         }
 
+        let parsedPage = 1;
+        if (page !== undefined) {
+            const rawPage = parseInt(page, 10);
+            if (!Number.isNaN(rawPage) && rawPage > 0) {
+                parsedPage = rawPage;
+            }
+        }
+
         const queryOptions = {
             where: whereClause,
             order: [['publishedAt', 'DESC']],
@@ -98,10 +106,18 @@ export const getProjects = async (req, res) => {
 
         if (parsedLimit) {
             queryOptions.limit = parsedLimit;
+            queryOptions.offset = (parsedPage - 1) * parsedLimit;
         }
 
-        const projects = await model.Project.findAll(queryOptions);
-        return res.status(200).json({ projects });
+        const { rows, count } = await model.Project.findAndCountAll(queryOptions);
+        const total = typeof count === 'number' ? count : count.length;
+
+        return res.status(200).json({
+            projects: rows,
+            total,
+            page: parsedPage,
+            limit: parsedLimit ?? null,
+        });
     } catch (error) {
         console.error(error)
         return res.status(500).json({ message: 'There was an error' })
