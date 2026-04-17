@@ -5,9 +5,10 @@ import hubProjectsRoutes from './hub/projects.js';
 import utilsRoutes from './utils.js';
 import testRoutes from './test.js';
 import authRoutes from './auth.js';
-import adminRoutes from './admin.js';
+import adminRoutes from './admin/index.js';
 import usersRoutes from './users.js';
 import demoRoutes from './demo.js';
+import legislatorRoutes from './legislator/index.js';
 import authenticate from '../middlewares/authenticate.js';
 import authorize from '../middlewares/authorize.js';
 
@@ -24,6 +25,7 @@ export default function routes(app) {
 	app.use('/hub/projects', hubProjectsRoutes);
 	app.use('/projects', projectsRoutes);
 	app.use('/admin', adminRoutes);
+	app.use('/legislators', legislatorRoutes);
 	app.use('/utils', utilsRoutes);
 	app.use('/demo', demoRoutes);
 
