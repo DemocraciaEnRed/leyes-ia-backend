@@ -6,6 +6,7 @@ export const AI_USAGE_ACTIONS = Object.freeze({
   SURVEY_GENERATE_BASE: 'survey_generate_base',
   SURVEY_GENERATE: 'survey_generate',
   SURVEY_REGENERATE: 'survey_regenerate',
+  LEGISLATOR_QUOTES_SEARCH: 'legislator_quotes_search',
 });
 
 const snakeCasePattern = /^[a-z]+(?:_[a-z0-9]+)*$/;

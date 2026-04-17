@@ -3,6 +3,7 @@ import { check } from 'express-validator';
 import * as projectController from '../../controllers/projectController.js';
 import * as projectMembersController from '../../controllers/projectMembersController.js';
 import * as projectAiUsageController from '../../controllers/projectAiUsageController.js';
+import * as legislatorQuotesController from '../../controllers/legislatorQuotesController.js';
 import projectKnowledgeBaseRouter from './knowledgeBase.js';
 import projectSurveyRouter from './surveys.js';
 import projectFilesRouter from './files.js';
@@ -62,5 +63,19 @@ router.delete('/supporters/:userId', requireProjectEditAccess, [
 router.use('/files', projectFilesRouter);
 router.use('/knowledge-base', projectKnowledgeBaseRouter);
 router.use('/surveys', projectSurveyRouter);
+
+router.get('/legislator-quotes', legislatorQuotesController.getResults);
+router.post('/legislator-quotes', requireProjectEditAccess, [
+	check('legislatorIds')
+		.isArray({ min: 1, max: 5 }).withMessage('Debe seleccionar entre 1 y 5 legisladores.'),
+	check('legislatorIds.*')
+		.isInt({ min: 1 }).withMessage(msg.validationError.integer),
+	check('dateRangeStart')
+		.optional({ values: 'null' }).isISO8601().withMessage(msg.validationError.date),
+	check('dateRangeEnd')
+		.optional({ values: 'null' }).isISO8601().withMessage(msg.validationError.date),
+	check('forceRegenerate')
+		.optional().isBoolean().withMessage(msg.validationError.boolean),
+], validate, legislatorQuotesController.searchQuotes);
 
 export default router;
