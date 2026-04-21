@@ -70,7 +70,28 @@ REGLAS ESTRICTAS:
 8. El campo "stance" debe reflejar la postura GENERAL inferida del conjunto de declaraciones encontradas, no de una cita individual.
 9. El "summary" debe ser en formato markdown (sin titulares h1/h2/h3) y no debe superar los 500 caracteres.
 
-Responde en JSON con el schema proporcionado.`;
+FORMATO DE RESPUESTA:
+Responde UNICAMENTE con un array JSON (sin texto adicional) con exactamente este esquema por cada legislador:
+[
+  {
+    "legislatorId": <number, el ID del legislador>,
+    "legislatorName": "<string, nombre completo>",
+    "found": <boolean>,
+    "summary": "<string, resumen en markdown sin h1/h2/h3, max 500 chars>",
+    "stance": "<string: 'a_favor' | 'en_contra' | 'neutral' | 'ambiguo' | null>",
+    "quotes": [
+      {
+        "date": "<string YYYY-MM-DD | null>",
+        "source": "<string, nombre de la fuente>",
+        "sourceUrl": "<string URL | null>",
+        "content": "<string, la cita o declaracion>",
+        "context": "<string, contexto de la declaracion>"
+      }
+    ]
+  }
+]
+
+IMPORTANTE: Usa EXACTAMENTE estos nombres de campo en ingles. El resultado debe ser un array JSON directamente, sin envolverlo en un objeto.`;
 };
 
 export const findCachedResults = async ({ projectId, legislatorIds, dateRangeStart, dateRangeEnd, maxAgeHours = CACHE_MAX_AGE_HOURS }) => {
@@ -100,19 +121,46 @@ export const findCachedResults = async ({ projectId, legislatorIds, dateRangeSta
 
 export const searchQuotes = async ({ project, legislators, dateRange }) => {
   const prompt = buildPrompt(project, legislators, dateRange);
-  const jsonSchema = getJsonSchema();
 
+  // Note: Google Search grounding (`tools`) cannot be combined with
+  // `responseMimeType: 'application/json'`. We request plain text and
+  // parse the JSON ourselves, validating with Zod.
   const response = await geminiService.ai.models.generateContent({
     model: GEMINI_MODEL,
     contents: prompt,
     config: {
-      responseMimeType: 'application/json',
-      responseJsonSchema: jsonSchema,
       tools: [{ googleSearch: {} }],
     },
   });
 
-  const results = JSON.parse(response.text);
+  // Extract JSON from the response text (may be wrapped in ```json fences)
+  const responseText = response.text
+    ?? response.candidates?.[0]?.content?.parts?.map(p => p.text).filter(Boolean).join('')
+    ?? '';
+
+  if (!responseText) {
+    throw new Error('Gemini returned an empty response. Candidates: ' + JSON.stringify(response.candidates));
+  }
+
+  let rawText = responseText.trim();
+  const jsonMatch = rawText.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (jsonMatch) {
+    rawText = jsonMatch[1].trim();
+  }
+
+  let parsed = JSON.parse(rawText);
+
+  // Gemini may wrap the array inside an object (e.g. { "legislators": [...] }).
+  // Unwrap it if that happens.
+  if (!Array.isArray(parsed) && typeof parsed === 'object' && parsed !== null) {
+    const values = Object.values(parsed);
+    const arrValue = values.find(v => Array.isArray(v));
+    if (arrValue) {
+      parsed = arrValue;
+    }
+  }
+
+  const results = legislatorQuotesResponseSchema.parse(parsed);
 
   // Extract grounding metadata
   const groundingMetadata = response.candidates?.[0]?.groundingMetadata || null;

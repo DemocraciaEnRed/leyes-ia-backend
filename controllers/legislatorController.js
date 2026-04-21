@@ -27,8 +27,8 @@ export const list = async (req, res) => {
 		if (req.query.search) {
 			const search = `%${req.query.search}%`;
 			where[Op.or] = [
-				{ firstName: { [Op.iLike]: search } },
-				{ lastName: { [Op.iLike]: search } },
+				{ firstName: { [Op.like]: search } },
+				{ lastName: { [Op.like]: search } },
 			];
 		}
 
@@ -325,8 +325,8 @@ export const listPublic = async (req, res) => {
 		if (req.query.search) {
 			const search = `%${req.query.search}%`;
 			where[Op.or] = [
-				{ firstName: { [Op.iLike]: search } },
-				{ lastName: { [Op.iLike]: search } },
+				{ firstName: { [Op.like]: search } },
+				{ lastName: { [Op.like]: search } },
 			];
 		}
 

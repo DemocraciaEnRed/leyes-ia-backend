@@ -4,6 +4,9 @@ import * as projectController from '../../controllers/projectController.js';
 import * as projectMembersController from '../../controllers/projectMembersController.js';
 import * as projectAiUsageController from '../../controllers/projectAiUsageController.js';
 import * as legislatorQuotesController from '../../controllers/legislatorQuotesController.js';
+import * as votePredictionController from '../../controllers/votePredictionController.js';
+import * as voteResultController from '../../controllers/voteResultController.js';
+import upload from '../../services/multer.js';
 import projectKnowledgeBaseRouter from './knowledgeBase.js';
 import projectSurveyRouter from './surveys.js';
 import projectFilesRouter from './files.js';
@@ -77,5 +80,21 @@ router.post('/legislator-quotes', requireProjectEditAccess, [
 	check('forceRegenerate')
 		.optional().isBoolean().withMessage(msg.validationError.boolean),
 ], validate, legislatorQuotesController.searchQuotes);
+
+// Vote predictions
+router.get('/vote-predictions', votePredictionController.listPredictions);
+router.post('/vote-predictions/generate', requireProjectEditAccess, votePredictionController.generateTheoretical);
+router.post('/vote-predictions/:predictionId/generate-contextual', requireProjectEditAccess, [
+	check('predictionId').isInt({ min: 1 }).withMessage(msg.validationError.integer),
+	check('dateFrom').optional({ values: 'null' }).isISO8601().withMessage(msg.validationError.date),
+	check('dateTo').optional({ values: 'null' }).isISO8601().withMessage(msg.validationError.date),
+], validate, votePredictionController.generateContextual);
+router.post('/vote-predictions/regenerate', requireProjectEditAccess, votePredictionController.regenerateAll);
+
+// Vote results
+router.get('/vote-result', voteResultController.getResult);
+router.post('/vote-result/upload-acta', requireProjectEditAccess, upload.single('actaFile'), [
+	check('sourceUrl').optional({ values: 'null' }).isURL().withMessage('La URL no es válida'),
+], validate, voteResultController.uploadActa);
 
 export default router;

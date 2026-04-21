@@ -8,6 +8,11 @@ export default (sequelize, DataTypes) => {
 				targetKey: 'id',
 				as: 'province',
 			});
+			Legislator.belongsTo(models.PoliticalParty, {
+				foreignKey: 'politicalPartyId',
+				targetKey: 'id',
+				as: 'politicalParty',
+			});
 		}
 	}
 
